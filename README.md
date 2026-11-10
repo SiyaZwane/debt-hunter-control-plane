@@ -5,9 +5,10 @@ The optional, asynchronous management and analytics control plane for
 CI/CD pipelines, maintains governance state, drives trend analytics, manages policy lifecycle, and
 surfaces portfolio dashboards.
 
-> **Status: scaffolding (CP-M0).** The module structure, build, quality gates, and Spring Boot
-> entry point exist and build green. No control-plane behaviour is implemented yet — see
-> [Roadmap](#roadmap).
+> **Status: ingestion edge built (CP-M0, CP-FR-01).** A pipeline can publish a run bundle and
+> receive `202`; the bundle is authenticated, scope-checked, schema-validated, and queued. Nothing
+> downstream of the queue exists yet — see the [Roadmap](#roadmap) and the
+> [ingestion API reference](docs/ingestion-api.md).
 
 ## The one constraint that overrides everything else
 
@@ -33,6 +34,7 @@ Nine Maven modules, grouped into the zones of the control plane. Dependencies po
 
 | Module | Zone | Responsibility | Depends on |
 |---|---|---|---|
+| `control-plane-testkit` | — | Test support: bundle fixtures, a JWT issuer with a local JWKS server, a Kafka test broker. Test scope only | — |
 | `control-plane-store` | B | System of record: registry, runs, findings, transition log, suppressions, baselines, policy catalogue, evidence | `domain` |
 | `control-plane-ingest` | A | Normaliser, pseudonymiser, idempotency, finding-lifecycle state machine | `domain`, `store` |
 | `control-plane-analytics` | C | Metric projection, trends, drift, coverage and adoption | `domain`, `store` |
@@ -47,24 +49,36 @@ Nine Maven modules, grouped into the zones of the control plane. Dependencies po
 
 Requires Java 21. Maven is provided by the wrapper.
 
-**One-time setup:** this project builds against debt-hunter's `domain` module, which is not yet
-published to a registry, so install it into your local Maven repository first:
+**One-time setup.** This project builds against debt-hunter, which is not yet published to a
+registry, so install the pieces it needs into your local Maven repository first:
 
 ```bash
 git clone https://github.com/SiyaZwane/debt-hunter.git
 cd debt-hunter
-./mvnw -pl domain install -DskipTests -Djacoco.skip=true
+./mvnw -pl cli -am install -DskipTests -Djacoco.skip=true
 ```
 
-(`-Djacoco.skip=true` is needed because `-DskipTests` leaves JaCoCo's 80% coverage gate with no
-data to check.) Then, in this repository:
+That installs `domain` (the shared model, a compile dependency) and `cli` (the runnable data-plane
+jar, which the integration tests run as a separate process, exactly as a pipeline would).
+`-Djacoco.skip=true` is needed because `-DskipTests` leaves JaCoCo's 80% coverage gate with no data
+to check.
+
+**Docker.** The integration tests start a real Kafka broker with Testcontainers, so a Docker daemon
+must be running. With Colima, point Testcontainers at it:
+
+```bash
+export DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock
+```
+
+Then, in this repository:
 
 ```bash
 ./mvnw clean verify
 ```
 
-This runs compilation, tests, Spotless (Google Java Format), SpotBugs, the enforcer rules, and
-JaCoCo's 80% line-coverage gate across every module.
+This runs compilation, unit and integration tests, Spotless (Google Java Format), SpotBugs, the
+enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 
 ## Rules
 
@@ -90,8 +104,8 @@ JaCoCo's 80% line-coverage gate across every module.
 | Step | Scope | State |
 |---|---|---|
 | CP-M0 | Module structure, build, quality gates, Spring Boot entry point | Done |
-| CP-FR-01 | Ingestion API: validate, scope-check, enqueue, return `202` | Next |
-| CP-FR-02 – 04 | Schema normalisation, pseudonymisation, idempotency and finding lifecycle | Planned |
+| CP-FR-01 | Ingestion API: validate, scope-check, enqueue, return `202` | Done |
+| CP-FR-02 – 04 | Schema normalisation, pseudonymisation, idempotency and finding lifecycle | Next: CP-FR-02 |
 | CP-FR-05 – 07 | System of record, analytics, coverage tracking | Planned |
 | CP-FR-08 – 10 | Policy authoring, signing and publication, rollout stages | Planned |
 | CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
@@ -99,6 +113,23 @@ JaCoCo's 80% line-coverage gate across every module.
 | Cross-cutting | Workload-identity scoping, retention tiering, failure isolation | Planned |
 | Release gate | Offline conformance test — the whole control plane down, pipeline still delivers | Planned |
 
-The offline conformance test is a release gate, but a minimal version should land immediately
-after CP-FR-01 and run as a regression guard through every later step, rather than waiting until
-the end.
+CP-AC-05 — the real data-plane CLI completing a scan, with a warning and nothing worse, while the
+control plane is stopped — landed with CP-FR-01 and runs as a regression guard through every later
+step, rather than waiting for the final release-gate test.
+
+## Decisions and known gaps from CP-FR-01
+
+- **The data plane reports a local path as `run.repository`.** The scope check is keyed on it, so it
+  cannot work outside tests until the data plane emits a real repository identifier. That is a change
+  to `debt-hunter`, not to this repository. See
+  [Repository identity](docs/ingestion-api.md#repository-identity).
+- **The data plane's production `scan` currently wires no analysis engines**, so real reports have an
+  empty `engines` list and no findings. Also a `debt-hunter` change.
+- **The v0 (N-1) schema is provisional.** No real v0 ever existed. See
+  [Schema versions](docs/ingestion-api.md#schema-versions).
+- **CP-BC-04 ("burst throttling") is an interpretation.** The prompt names it without specifying it.
+- **`SecurityAlertPublisher` lives in `control-plane-egress`, not `-api`** as the prompt places it:
+  the prompt has `api` depending on `egress`, so an `egress` implementation of an `api`-owned
+  interface would be a dependency cycle.
+- **The queue listener is built and tested but not started by the application** until there is a
+  downstream stage (CP-FR-02) to hand bundles to.

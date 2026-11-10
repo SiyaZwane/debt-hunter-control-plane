@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://debthunter.com/schemas/control-plane/run-bundle-v0.schema.json",
+  "title": "Debt Hunter run bundle, schema v0 (N-1, provisional)",
+  "description": "PROVISIONAL. The data plane has only ever emitted schema 1.x, so no real v0 exists. This is the v1 shape with the fields v1 added left optional (run.degraded, top-level metrics, per-finding confidence/evidence/score/isNew, policy.bundleVersion), standing in for 'the previous version' so the current-and-N-1 acceptance window is real and testable. To be aligned with the normaliser's field mapping when that is built.",
+  "type": "object",
+  "required": ["schemaVersion", "run", "findings", "policy"],
+  "properties": {
+    "schemaVersion": { "type": "string", "pattern": "^0\\.[0-9]+$" },
+    "run": {
+      "type": "object",
+      "required": ["id", "toolVersion", "timestamp", "repository", "commit", "historyDepth", "engines"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "toolVersion": { "type": "string", "minLength": 1 },
+        "timestamp": { "type": "string", "minLength": 1 },
+        "repository": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string" },
+        "historyDepth": { "enum": ["FULL", "PARTIAL", "SHALLOW"] },
+        "engines": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "version", "status", "durationMs"],
+            "properties": {
+              "id": { "type": "string", "minLength": 1 },
+              "version": { "type": "string", "minLength": 1 },
+              "status": { "enum": ["OK", "DEGRADED", "FAILED"] },
+              "durationMs": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "ruleId", "category", "severity", "path", "startLine", "message", "fingerprint"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "ruleId": { "type": "string", "minLength": 1 },
+          "category": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] },
+          "path": { "type": "string", "minLength": 1 },
+          "startLine": { "type": "integer", "minimum": 0 },
+          "message": { "type": "string", "minLength": 1 },
+          "fingerprint": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "required": ["status", "reasons"],
+      "properties": {
+        "status": { "enum": ["PASSED", "FAILED", "WOULD_FAIL"] },
+        "reasons": { "type": "array" }
+      }
+    }
+  }
+}

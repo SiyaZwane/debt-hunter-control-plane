@@ -11,3 +11,6 @@ target/
 
 # Local scan output
 out/
+
+# Microsoft Office owner-lock files (created when a pom/doc is opened in an Office app)
+~$*

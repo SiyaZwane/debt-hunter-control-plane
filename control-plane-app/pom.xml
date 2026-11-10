@@ -27,6 +27,11 @@
       <artifactId>spring-boot-starter-test</artifactId>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>com.debthunter.controlplane</groupId>
+      <artifactId>control-plane-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
 
   <build>
@@ -51,8 +56,51 @@
             <goals>
               <goal>repackage</goal>
             </goals>
+            <configuration>
+              <!-- Keep the plain jar as the main artifact: repackaging it in place nests the
+                   classes under BOOT-INF/, which breaks the integration tests (they run after
+                   `package`, against that jar). The runnable jar is attached as *-exec.jar. -->
+              <classifier>exec</classifier>
+            </configuration>
           </execution>
         </executions>
+      </plugin>
+      <!-- The integration tests run the real data-plane CLI as a separate process, exactly as a
+           pipeline would. Copy its runnable jar out of the local Maven repository (run
+           `./mvnw -pl cli -am install` in debt-hunter first; see README.md). -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>copy-data-plane-cli</id>
+            <phase>pre-integration-test</phase>
+            <goals>
+              <goal>copy</goal>
+            </goals>
+            <configuration>
+              <artifactItems>
+                <artifactItem>
+                  <groupId>com.debthunter</groupId>
+                  <artifactId>cli</artifactId>
+                  <version>${debt-hunter.version}</version>
+                  <type>jar</type>
+                  <destFileName>debt-hunter.jar</destFileName>
+                </artifactItem>
+              </artifactItems>
+              <outputDirectory>${project.build.directory}/data-plane</outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <debthunter.dataplane.jar>${project.build.directory}/data-plane/debt-hunter.jar</debthunter.dataplane.jar>
+          </systemPropertyVariables>
+        </configuration>
       </plugin>
       <!-- The Spring Boot entry point is pure wiring (SpringApplication.run); its context start-up
            is covered by ControlPlaneApplicationSmokeTest, but its main() cannot be exercised
