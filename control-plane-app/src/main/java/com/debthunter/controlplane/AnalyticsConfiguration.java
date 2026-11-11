@@ -18,6 +18,7 @@ import com.debthunter.controlplane.analytics.trend.TrendEngine;
 import com.debthunter.controlplane.store.findings.PseudonymisedFindingStore;
 import com.debthunter.controlplane.store.lifecycle.TransitionLogRepository;
 import com.debthunter.controlplane.store.registry.RepositoryRegistryService;
+import com.debthunter.controlplane.store.rollout.StageLookup;
 import com.debthunter.controlplane.store.runs.RunRepository;
 import java.net.URI;
 import java.time.Clock;
@@ -203,6 +204,7 @@ public class AnalyticsConfiguration {
    * @param runs the run store (read-only use)
    * @param estate the estate provider, if one is configured
    * @param coverage where reports are kept
+   * @param stages where repositories are in the rollout
    * @param clock the clock
    * @param properties the control-plane configuration
    * @return the tracker
@@ -213,6 +215,7 @@ public class AnalyticsConfiguration {
       RunRepository runs,
       ObjectProvider<SourceControlEstateProvider> estate,
       CoverageRepository coverage,
+      StageLookup stages,
       Clock clock,
       ControlPlaneProperties properties) {
     ControlPlaneProperties.Coverage c = properties.analytics().coverage();
@@ -224,7 +227,8 @@ public class AnalyticsConfiguration {
         new CoverageSettings(c.cadence(), c.currentToolMajor(), c.degradedWindow()),
         clock,
         new Staleness(
-            () -> coverage.latest().map(CoverageReport::reconciledAt), clock, c.staleAfter()));
+            () -> coverage.latest().map(CoverageReport::reconciledAt), clock, c.staleAfter()),
+        stages);
   }
 
   /**

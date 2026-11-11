@@ -17,6 +17,8 @@ import com.debthunter.controlplane.store.quarantine.JdbcQuarantineRepository;
 import com.debthunter.controlplane.store.quarantine.QuarantineRepository;
 import com.debthunter.controlplane.store.registry.JdbcRepositoryRegistry;
 import com.debthunter.controlplane.store.registry.RepositoryRegistryService;
+import com.debthunter.controlplane.store.rollout.JdbcStageRepository;
+import com.debthunter.controlplane.store.rollout.StageRepository;
 import com.debthunter.controlplane.store.runs.JdbcRunRepository;
 import com.debthunter.controlplane.store.runs.RunRepository;
 import com.debthunter.controlplane.store.suppressions.JdbcSuppressionRepository;
@@ -185,6 +187,17 @@ public class StoreConfiguration {
   @Bean
   public PolicyCatalogueService policyCatalogueService(DataSource dataSource) {
     return new PolicyCatalogueService(new JdbcPolicyCatalogueRepository(dataSource));
+  }
+
+  /**
+   * Where repositories are in the rollout.
+   *
+   * @param dataSource the database
+   * @return the repository
+   */
+  @Bean
+  public StageRepository stageRepository(DataSource dataSource) {
+    return new JdbcStageRepository(dataSource);
   }
 
   /**

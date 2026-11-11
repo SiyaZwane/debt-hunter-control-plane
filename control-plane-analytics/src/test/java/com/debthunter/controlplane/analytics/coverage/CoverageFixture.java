@@ -10,6 +10,10 @@ import com.debthunter.controlplane.store.registry.OnboardedRepository;
 import com.debthunter.controlplane.store.registry.RepositoryRegistry;
 import com.debthunter.controlplane.store.registry.RepositoryRegistryService;
 import com.debthunter.controlplane.store.registry.WorkItemRoute;
+import com.debthunter.controlplane.store.rollout.InMemoryStageRepository;
+import com.debthunter.controlplane.store.rollout.RolloutStage;
+import com.debthunter.controlplane.store.rollout.StageEvent;
+import com.debthunter.controlplane.store.rollout.StageRecord;
 import com.debthunter.controlplane.testkit.RunBundleBuilder;
 import java.time.Duration;
 import java.time.Instant;
@@ -27,7 +31,9 @@ public final class CoverageFixture {
   public final MutableClock clock = new MutableClock(Days.day(100));
   public final CoverageRepository coverage;
   public final CoverageTracker tracker;
+  public final InMemoryStageRepository stages = new InMemoryStageRepository();
   private boolean estateDown;
+  private boolean stagesDown;
 
   public CoverageFixture() {
     this(
@@ -64,7 +70,36 @@ public final class CoverageFixture {
             new Staleness(
                 () -> coverage.latest().map(CoverageReport::reconciledAt),
                 clock,
-                Duration.ofHours(36)));
+                Duration.ofHours(36)),
+            () -> {
+              if (stagesDown) {
+                throw new IllegalStateException("stage store unavailable");
+              }
+              return stages.currentStages();
+            });
+  }
+
+  /** Puts a repository into the rollout at a stage. */
+  public CoverageFixture inRollout(String repository, RolloutStage stage) {
+    java.time.Instant at = Days.day(1);
+    stages.apply(
+        new StageRecord(repository, stage, at, "team", java.util.Map.of(), null, null),
+        new StageEvent(
+            repository,
+            StageEvent.Kind.ENROLLED,
+            null,
+            stage,
+            at,
+            "lead",
+            java.util.Map.of(),
+            null));
+    return this;
+  }
+
+  /** Makes the stage store fail. */
+  public CoverageFixture stagesDown() {
+    this.stagesDown = true;
+    return this;
   }
 
   /** Onboards a repository. */

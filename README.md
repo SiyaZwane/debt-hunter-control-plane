@@ -118,7 +118,7 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-07 | Coverage and adoption tracking: silent, never-onboarded, degraded, drifted | Done ([details](docs/coverage.md)) |
 | CP-FR-08 | Policy authoring, validation and read-only impact simulation | Done ([details](docs/policy-simulation.md)) |
 | CP-FR-09 | Policy signing and publication | Done ([details](docs/policy-publication.md)) |
-| CP-FR-10 | Rollout stages | Planned |
+| CP-FR-10 | Rollout stage management | Done ([details](docs/rollout-stages.md)) |
 | CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
 | CP-FR-13 – 16 | Work items, notifications, serve layer | Planned |
 | Cross-cutting | Workload-identity scoping, retention tiering, failure isolation | Planned |
@@ -295,3 +295,39 @@ step, rather than waiting for the final release-gate test.
   a compile dependency on governance and uses it in the CP-AC-47 test only.
 - **CP-AC-44 to 47 are defined only by test names in the spec,** so their meaning was interpreted
   (see `docs/policy-publication.md`).
+
+## Decisions and known gaps from CP-FR-10
+
+- **There are now two notions of "stage", and that is the main thing to decide.** The registry's
+  `rolloutStage` is free text set at onboarding (`"enforce"`, `"warn"` in tests). The new managed
+  stage (`RolloutStage` 1 to 4, with evidence, owner, history) is a separate record. Coverage reports
+  show the managed one; the CP-FR-08 simulator still groups by the registry's text. I did not touch the
+  registry field. I recommend retiring it and reading the stage from the managed record, which needs
+  your call on migrating existing values.
+- **Stage meanings are minimal on purpose.** The spec fixes only two behaviours: stage 1 observes, and
+  work items start at stage 3 ("stage 3+", and CP-AC-69 says stage 2 creates none). I made it four
+  stages; the number four, and what stage 4 means, are my choice. Everything else about a stage is the
+  organisation's, supplied as `StagePolicy` (exit criteria per stage, maximum hold per stage). There
+  is no default policy and no configuration binding yet.
+- **Forward is one stage at a time and needs evidence.** Every exit criterion for the stage being left
+  must be present with non-blank evidence; the event records approver, date and the criteria relied on.
+  Nothing checks that the evidence is *true* (a URL is accepted as a URL). Moving back needs only a
+  reason, and starts a new stay.
+- **Escalation is once per stay, at-least-once delivery.** A sweep (`escalateOverdue`) marks the record
+  after the sink accepts it, so a crash between the two repeats the escalation rather than losing it.
+  An approved, unexpired exemption excuses the hold; when it expires the repository is due again.
+  Nothing calls the sweep on a schedule yet, and the only sink is the interface: no notification is
+  wired (CP-FR-14 digests are the natural consumer).
+- **The "exception record" is called an exemption** in code, because a class named `...Exception` trips
+  SpotBugs and confuses readers. It is the same thing.
+- **`isWorkItemCreationEnabled` throws if the store is unreadable** rather than answering. A caller must
+  treat that as "do not create now", never as permission. A repository not in the rollout is `false`.
+- **Enrolment is not automatic.** Onboarding a repository through the admin API does not enrol it in the
+  rollout, so a freshly onboarded repository has no stage (shown as none) and no work items. There is
+  no admin or HTTP surface for stage changes at all yet.
+- **CP-AC-49 is tested at the gate.** "Creates work item" belongs to the egress step (CP-FR-13), which
+  does not exist yet; the test proves the gate opens at stage 3 from PostgreSQL, not that an item is
+  created. CP-AC-52 is tested through the coverage report, because the serve layer (CP-FR-15) has no
+  adoption endpoint yet.
+- **Coverage reads all stages in one query per reconciliation** and, if that fails, the report says so
+  in its warnings and shows no stages instead of failing.

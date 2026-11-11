@@ -404,4 +404,83 @@ class CoverageTrackerTest {
                     Collectors.toMap(RepositoryCoverage::repository, RepositoryCoverage::state)))
         .containsEntry("acme/forgotten", CoverageState.NEVER_ONBOARDED);
   }
+
+  // ---- CP-AC-52: the rollout stage is shown in the report ------------------------------------
+
+  @Test
+  void cpAc52_eachRepositoryShowsItsRolloutStage() {
+    f.onboard("acme/a").onboard("acme/b").onboard("acme/c");
+    f.inRollout("acme/a", com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_1)
+        .inRollout("acme/b", com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_3);
+
+    CoverageReport report = f.tracker.reconcile();
+
+    assertThat(report.repositories())
+        .extracting(RepositoryCoverage::repository, RepositoryCoverage::rolloutStage)
+        .containsExactly(
+            org.assertj.core.api.Assertions.tuple(
+                "acme/a", com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_1),
+            org.assertj.core.api.Assertions.tuple(
+                "acme/b", com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_3),
+            org.assertj.core.api.Assertions.tuple("acme/c", null));
+  }
+
+  @Test
+  void aRepositoryOutsideTheRolloutHasNoStageRatherThanAGuessedOne() {
+    f.onboard("acme/a");
+
+    assertThat(f.tracker.reconcile().repositories().get(0).rolloutStage()).isNull();
+  }
+
+  @Test
+  void stageMatchingIgnoresCaseLikeTheRestOfCoverage() {
+    f.onboard("Acme/Widgets");
+    f.inRollout("acme/widgets", com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_2);
+
+    assertThat(f.tracker.reconcile().repositories().get(0).rolloutStage())
+        .isEqualTo(com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_2);
+  }
+
+  @Test
+  void stageMatchingIgnoresCaseWhicheverSideIsCapitalised() {
+    f.onboard("acme/widgets");
+    f.inRollout("Acme/Widgets", com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_2);
+
+    assertThat(f.tracker.reconcile().repositories().get(0).rolloutStage())
+        .isEqualTo(com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_2);
+  }
+
+  @Test
+  void aRepositoryInTheEstateButNotOnboardedStillShowsItsStageIfItHasOne() {
+    f.estate.add("acme/new");
+    f.inRollout("acme/new", com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_1);
+
+    CoverageReport report = f.tracker.reconcile();
+
+    assertThat(report.inState(CoverageState.NEVER_ONBOARDED).get(0).rolloutStage())
+        .isEqualTo(com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_1);
+  }
+
+  @Test
+  void ifTheStagesCannotBeReadTheReportSaysSoAndIsOtherwiseIntact() {
+    f.onboard("acme/a").apply(run("acme/a", 98, "r1")).today(100);
+    f.inRollout("acme/a", com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_3)
+        .stagesDown();
+
+    CoverageReport report = f.tracker.reconcile();
+
+    assertThat(report.warnings()).anyMatch(w -> w.contains("Rollout stages could not be read"));
+    assertThat(report.repositories().get(0).rolloutStage()).isNull();
+    assertThat(report.repositories().get(0).state()).isEqualTo(CoverageState.REPORTING);
+  }
+
+  @Test
+  void aStoredReportKeepsTheStagesItShowed() {
+    f.onboard("acme/a");
+    f.inRollout("acme/a", com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_2);
+    f.tracker.reconcile();
+
+    assertThat(f.tracker.latest().value().orElseThrow().repositories().get(0).rolloutStage())
+        .isEqualTo(com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_2);
+  }
 }

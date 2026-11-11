@@ -1,5 +1,6 @@
 package com.debthunter.controlplane.analytics.coverage;
 
+import com.debthunter.controlplane.store.rollout.RolloutStage;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
@@ -15,6 +16,8 @@ import java.util.Objects;
  * @param onboarded whether it is in the registry
  * @param inEstate whether it is in the source-control estate, or {@code null} if the estate could
  *     not be consulted
+ * @param rolloutStage where the repository is in the rollout, or {@code null} if it is not in the
+ *     rollout (or the stage could not be read, which the report's warnings say)
  */
 public record RepositoryCoverage(
     String repository,
@@ -23,7 +26,26 @@ public record RepositoryCoverage(
     Instant lastRunReceivedAt,
     String lastToolVersion,
     boolean onboarded,
-    Boolean inEstate) {
+    Boolean inEstate,
+    RolloutStage rolloutStage) {
+
+  /** A coverage entry with no rollout stage. */
+  public RepositoryCoverage(
+      String repository,
+      CoverageState state,
+      List<String> reasons,
+      Instant lastRunReceivedAt,
+      String lastToolVersion,
+      boolean onboarded,
+      Boolean inEstate) {
+    this(repository, state, reasons, lastRunReceivedAt, lastToolVersion, onboarded, inEstate, null);
+  }
+
+  /** A copy showing a rollout stage. */
+  public RepositoryCoverage withRolloutStage(RolloutStage stage) {
+    return new RepositoryCoverage(
+        repository, state, reasons, lastRunReceivedAt, lastToolVersion, onboarded, inEstate, stage);
+  }
 
   /** Validates and defensively copies the components. */
   public RepositoryCoverage {
