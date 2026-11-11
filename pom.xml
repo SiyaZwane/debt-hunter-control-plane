@@ -95,6 +95,11 @@
         <artifactId>domain</artifactId>
         <version>${debt-hunter.version}</version>
       </dependency>
+      <dependency>
+        <groupId>com.debthunter</groupId>
+        <artifactId>policy</artifactId>
+        <version>${debt-hunter.version}</version>
+      </dependency>
 
       <!-- Control-plane modules -->
       <dependency>

@@ -41,7 +41,7 @@ Nine Maven modules, grouped into the zones of the control plane. Dependencies po
 | `control-plane-store` | B | System of record: registry, runs, findings, transition log, suppressions, baselines, policy catalogue, evidence | `domain` |
 | `control-plane-ingest` | A | Normaliser, pseudonymiser, idempotency, finding-lifecycle state machine | `domain`, `store` |
 | `control-plane-analytics` | C | Metric projection, trends, drift, coverage and adoption | `domain`, `store` |
-| `control-plane-governance` | D | Policy authoring, simulation, signing and publication, rollout stages | `domain`, `store` |
+| `control-plane-governance` | D | Policy authoring, simulation, signing and publication, rollout stages | `domain`, data-plane `policy`, `store` |
 | `control-plane-ai` | E | Prompt guard, explanation service, remediation proposals, provenance | `domain`, `store` |
 | `control-plane-egress` | F | Work-item orchestrator, transactional outbox, notifications | `domain`, `store` |
 | `control-plane-serve` | G | Read models, dashboards, query API, evidence retrieval | `domain`, `store`, `analytics` |
@@ -116,7 +116,8 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | Admin API | Onboard repositories and grant pipelines over HTTP, role-protected and audited | Done ([details](docs/admin-api.md)) |
 | CP-FR-06 | Materialised read models, trend analytics, architecture drift, remediation effectiveness | Done ([details](docs/analytics.md)) |
 | CP-FR-07 | Coverage and adoption tracking: silent, never-onboarded, degraded, drifted | Done ([details](docs/coverage.md)) |
-| CP-FR-08 – 10 | Policy authoring, signing and publication, rollout stages | Planned |
+| CP-FR-08 | Policy authoring, validation and read-only impact simulation | Done ([details](docs/policy-simulation.md)) |
+| CP-FR-09 – 10 | Policy signing and publication, rollout stages | Planned |
 | CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
 | CP-FR-13 – 16 | Work items, notifications, serve layer | Planned |
 | Cross-cutting | Workload-identity scoping, retention tiering, failure isolation | Planned |
@@ -244,3 +245,21 @@ step, rather than waiting for the final release-gate test.
 - **The GitHub and Azure DevOps providers have only been tested against fakes** of their APIs.
 - **No HTTP API and no state history yet**; only the latest report is kept.
 - The run store now records when each run was **received** and its **history depth** (migration V5).
+
+## Decisions and known gaps from CP-FR-08
+
+- **The data plane's own parser and evaluator are reused**, not reimplemented, so a simulated verdict
+  is the verdict a pipeline would give. `control-plane-governance` now depends on the data plane's
+  `policy` artifact.
+- **Schema errors stop a simulation; "impossible threshold" does not.** It is a warning, because
+  quantifying it is what a simulation is for. It is only raised with at least 3 observed repositories.
+- **The parser reports one schema problem at a time**, the first it finds, rather than all of them.
+- **A repository that cannot be simulated is never counted as passing.** It is named with a reason and
+  counted in the share of the estate that could not be simulated.
+- **Only complete, applied runs are replayed**; degraded, pull-request, superseded and late runs are
+  not, because they understate a repository's debt. Only the main-branch rules are replayed.
+- **The content of a policy already in force is a port** (`PolicyBundleSource`): the catalogue keeps a
+  version and digest, not the text. Without it the delta is `UNKNOWN`. CP-FR-09 supplies the real one.
+- **Retention is not modelled.** An empty finding list could be a clean run or purged evidence; the
+  store cannot tell them apart yet, so only a failed read is reported as unavailable evidence.
+- No HTTP API yet, and the `StoreBackedRetainedEvidence` adapter is not wired into the app.
