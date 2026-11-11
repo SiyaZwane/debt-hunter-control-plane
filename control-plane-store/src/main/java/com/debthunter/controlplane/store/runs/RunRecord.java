@@ -20,6 +20,8 @@ import java.util.Objects;
  * @param committedAt the commit date the run was ordered and evaluated by
  * @param status what became of it
  * @param supersededBy the run that replaced it, if any
+ * @param policyStatus the policy outcome the run reported ({@code PASSED}, {@code FAILED} or {@code
+ *     WOULD_FAIL}), or {@code null} if not recorded
  */
 public record RunRecord(
     String runId,
@@ -33,7 +35,38 @@ public record RunRecord(
     List<EngineRecord> engines,
     Instant committedAt,
     RunStatus status,
-    String supersededBy) {
+    String supersededBy,
+    String policyStatus) {
+
+  /** A run with no recorded policy outcome. */
+  public RunRecord(
+      String runId,
+      String repository,
+      String projectSlice,
+      String commit,
+      String toolVersion,
+      String compositeKey,
+      boolean degraded,
+      boolean scopeLimited,
+      List<EngineRecord> engines,
+      Instant committedAt,
+      RunStatus status,
+      String supersededBy) {
+    this(
+        runId,
+        repository,
+        projectSlice,
+        commit,
+        toolVersion,
+        compositeKey,
+        degraded,
+        scopeLimited,
+        engines,
+        committedAt,
+        status,
+        supersededBy,
+        null);
+  }
 
   /** Validates and defensively copies the components. */
   public RunRecord {
@@ -65,6 +98,7 @@ public record RunRecord(
         engines,
         committedAt,
         RunStatus.SUPERSEDED,
-        newerRunId);
+        newerRunId,
+        policyStatus);
   }
 }

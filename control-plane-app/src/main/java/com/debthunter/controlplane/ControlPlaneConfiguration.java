@@ -28,6 +28,7 @@ import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 @EnableConfigurationProperties(ControlPlaneProperties.class)
 @Import({
   AdminApiConfiguration.class,
+  AnalyticsConfiguration.class,
   IngestionApiConfiguration.class,
   IngestionSecurityConfiguration.class,
   StoreConfiguration.class,

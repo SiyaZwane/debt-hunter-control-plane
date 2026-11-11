@@ -14,6 +14,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param database the system of record
  * @param pseudonym the secret that makes contributor pseudonyms unguessable
  * @param retention how long evidence detail is kept and how often housekeeping runs
+ * @param analytics how the analytics read models are kept up to date
  */
 @ConfigurationProperties(prefix = "debthunter.controlplane")
 public record ControlPlaneProperties(
@@ -22,7 +23,8 @@ public record ControlPlaneProperties(
     @DefaultValue RateLimit rateLimit,
     @DefaultValue Database database,
     @DefaultValue Pseudonym pseudonym,
-    @DefaultValue Retention retention) {
+    @DefaultValue Retention retention,
+    @DefaultValue Analytics analytics) {
 
   /**
    * Token verification. All three are required; the application refuses to start without them
@@ -96,4 +98,20 @@ public record ControlPlaneProperties(
   public record Retention(
       @DefaultValue("P30D") Duration evidenceHotTtl,
       @DefaultValue("PT1H") Duration sweepInterval) {}
+
+  /**
+   * Analytics read models. They are derived from the system of record, built asynchronously, and
+   * never consulted by ingest.
+   *
+   * @param projectorEnabled whether this instance projects; turning it off leaves the read models
+   *     to go stale and changes nothing about ingest
+   * @param projectionInterval how often the projector catches up
+   * @param staleAfter how old the read models may be before query results are flagged stale
+   * @param batchSize how many runs or transitions are projected and committed at a time
+   */
+  public record Analytics(
+      @DefaultValue("true") boolean projectorEnabled,
+      @DefaultValue("PT30S") Duration projectionInterval,
+      @DefaultValue("PT15M") Duration staleAfter,
+      @DefaultValue("500") int batchSize) {}
 }

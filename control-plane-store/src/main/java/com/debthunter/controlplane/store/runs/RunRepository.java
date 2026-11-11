@@ -33,6 +33,17 @@ public interface RunRepository {
   Optional<RunRecord> latestApplied(String repository, String projectSlice);
 
   /**
+   * Reads applied runs forward from a position, for a consumer that follows them (such as the
+   * analytics projector). Only runs that are currently {@code ACTIVE} are returned: late,
+   * scope-limited and superseded runs are not points in the main history. Read-only.
+   *
+   * @param afterSeq the last position already consumed; {@code 0} to start from the beginning
+   * @param limit the most runs to return
+   * @return the next active runs in the order they were applied
+   */
+  List<SequencedRun> activeAfter(long afterSeq, int limit);
+
+  /**
    * Saves a run and, in the same operation, marks earlier runs of the same composite key as
    * superseded by it. Idempotent for the same run id.
    *

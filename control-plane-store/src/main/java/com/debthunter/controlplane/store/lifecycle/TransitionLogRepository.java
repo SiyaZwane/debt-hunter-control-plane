@@ -21,6 +21,16 @@ public interface TransitionLogRepository {
   void append(List<FindingTransitionEvent> events);
 
   /**
+   * Reads the log forward from a position, for a consumer that follows it (such as the analytics
+   * projector). Read-only: it never alters the log.
+   *
+   * @param afterSeq the last position already consumed; {@code 0} to start from the beginning
+   * @param limit the most events to return
+   * @return the next events in append order
+   */
+  List<SequencedTransition> after(long afterSeq, int limit);
+
+  /**
    * Reads one finding's history in the order it was appended.
    *
    * @param repository the repository

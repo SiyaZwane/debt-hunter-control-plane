@@ -167,6 +167,7 @@ public final class LifecycleSink implements PseudonymisedRunSink {
         run.engines().stream().map(e -> new EngineRecord(e.id(), e.status().name())).toList(),
         committedAt,
         status,
-        null);
+        null,
+        bundle.policy().status().name());
   }
 }

@@ -107,6 +107,12 @@ class CpBc08_Bc09_Bc11_LifecycleBoundariesTest {
           }
 
           @Override
+          public List<com.debthunter.controlplane.store.lifecycle.SequencedTransition> after(
+              long afterSeq, int limit) {
+            return stores.transitions.after(afterSeq, limit);
+          }
+
+          @Override
           public List<FindingTransitionEvent> historyOf(String r, String p, String f) {
             return stores.transitions.historyOf(r, p, f);
           }

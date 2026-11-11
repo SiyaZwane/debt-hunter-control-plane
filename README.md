@@ -11,7 +11,7 @@ surfaces portfolio dashboards.
 > each finding's lifecycle, with durable storage on PostgreSQL. See the [Roadmap](#roadmap), the
 > [ingestion API](docs/ingestion-api.md), [normalisation](docs/normalisation.md),
 > [pseudonymisation](docs/pseudonymisation.md), [lifecycle](docs/lifecycle.md), and the
-> [system of record](docs/system-of-record.md), [running the control plane](docs/running.md), and the [administration API](docs/admin-api.md).
+> [system of record](docs/system-of-record.md), [running the control plane](docs/running.md), the [administration API](docs/admin-api.md), and [trend analytics](docs/analytics.md).
 
 ## The one constraint that overrides everything else
 
@@ -114,7 +114,8 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-05 | System of record: PostgreSQL stores, registry, suppressions, baselines, policy catalogue, evidence | Done |
 | App wiring | Database, registry, pipeline, queue listener and housekeeping assembled in `control-plane-app` | Done ([details](docs/running.md)) |
 | Admin API | Onboard repositories and grant pipelines over HTTP, role-protected and audited | Done ([details](docs/admin-api.md)) |
-| CP-FR-06 – 07 | Trend analytics, coverage tracking | Next: CP-FR-06 |
+| CP-FR-06 | Materialised read models, trend analytics, architecture drift, remediation effectiveness | Done ([details](docs/analytics.md)) |
+| CP-FR-07 | Coverage and adoption tracking | Next |
 | CP-FR-08 – 10 | Policy authoring, signing and publication, rollout stages | Planned |
 | CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
 | CP-FR-13 – 16 | Work items, notifications, serve layer | Planned |
@@ -218,3 +219,15 @@ step, rather than waiting for the final release-gate test.
 - **Only the registry has admin routes**; policy, suppressions and baselines do not yet.
 - **Repository identifiers may contain slashes in the URL**, but a leading slash (today's local-path
   identifiers) is awkward.
+
+## Decisions and known gaps from CP-FR-06
+
+- **The projector only reads the live stores**, enforced by an ArchUnit rule, and it is isolated in
+  the running app: a failing, hung or stopped projector leaves ingest untouched (CP-AC-32).
+- **Batches commit atomically with their checkpoint**, and the projector refuses to continue if a
+  checkpoint did not advance, rather than double-counting.
+- **"Architecture drift duration" is an interpretation**; the prompt does not define it.
+- **Policy pressure needed the run's policy outcome**, now stored on the run (migration V3).
+- **No HTTP API yet**: the engines are library code until the serve layer (CP-FR-15/16).
+- **Pull-request, late and superseded runs are not projected.**
+- Trends inherit the missing commit-graph source: commit dates fall back to run timestamps.

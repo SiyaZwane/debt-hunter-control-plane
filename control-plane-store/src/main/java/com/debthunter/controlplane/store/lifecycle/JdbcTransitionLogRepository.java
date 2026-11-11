@@ -53,6 +53,15 @@ public final class JdbcTransitionLogRepository implements TransitionLogRepositor
   }
 
   @Override
+  public List<SequencedTransition> after(long afterSeq, int limit) {
+    return jdbc.query(
+        "SELECT seq, " + COLUMNS + " FROM transition_log WHERE seq > ? ORDER BY seq LIMIT ?",
+        row -> new SequencedTransition(row.getLong("seq"), map(row)),
+        afterSeq,
+        limit);
+  }
+
+  @Override
   public List<FindingTransitionEvent> historyOf(
       String repository, String projectSlice, String fingerprint) {
     return jdbc.query(

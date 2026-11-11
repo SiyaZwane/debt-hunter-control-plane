@@ -11,6 +11,7 @@ public final class InMemoryRunRepository implements RunRepository {
 
   private final Map<String, RunRecord> byId = new LinkedHashMap<>();
   private final Map<String, String> latestByCommitSlice = new LinkedHashMap<>();
+  private final Map<String, Long> seqById = new LinkedHashMap<>();
 
   @Override
   public synchronized Optional<RunRecord> find(String runId) {
@@ -29,6 +30,16 @@ public final class InMemoryRunRepository implements RunRepository {
   }
 
   @Override
+  public synchronized List<SequencedRun> activeAfter(long afterSeq, int limit) {
+    return byId.values().stream()
+        .filter(r -> r.status() == RunStatus.ACTIVE && seqById.get(r.runId()) > afterSeq)
+        .map(r -> new SequencedRun(seqById.get(r.runId()), r))
+        .sorted(java.util.Comparator.comparingLong(SequencedRun::seq))
+        .limit(limit)
+        .toList();
+  }
+
+  @Override
   public synchronized void save(RunRecord run) {
     if (byId.containsKey(run.runId())) {
       return;
@@ -42,5 +53,6 @@ public final class InMemoryRunRepository implements RunRepository {
       latestByCommitSlice.put(run.repository() + '\u0000' + run.projectSlice(), run.runId());
     }
     byId.put(run.runId(), run);
+    seqById.put(run.runId(), (long) (seqById.size() + 1));
   }
 }

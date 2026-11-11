@@ -34,7 +34,10 @@ abstract class TransitionLogContract {
     List<String> names =
         Arrays.stream(TransitionLogRepository.class.getMethods()).map(Method::getName).toList();
 
-    assertThat(names).containsExactlyInAnyOrder("append", "historyOf", "eventsOfRun");
+    // Reading forward (after) is fine; the point is that nothing can change or remove an event.
+    assertThat(names).containsExactlyInAnyOrder("append", "after", "historyOf", "eventsOfRun");
+    assertThat(names)
+        .noneMatch(n -> n.startsWith("update") || n.startsWith("delete") || n.startsWith("remove"));
   }
 
   @Test
@@ -91,5 +94,47 @@ abstract class TransitionLogContract {
         .isInstanceOf(IllegalArgumentException.class);
     assertThatThrownBy(() -> event("e3", "r1", "fp-a", FindingState.OPEN, FindingState.NEW))
         .isInstanceOf(IllegalArgumentException.class);
+  }
+
+  @Test
+  void aConsumerCanFollowTheLogForwardFromAPosition() {
+    log.append(
+        List.of(
+            event("e1", "r1", "fp-a", null, FindingState.NEW),
+            event("e2", "r2", "fp-a", FindingState.NEW, FindingState.OPEN),
+            event("e3", "r3", "fp-a", FindingState.OPEN, FindingState.RESOLVED)));
+
+    List<SequencedTransition> all = log.after(0, 10);
+
+    assertThat(all).extracting(t -> t.event().eventId()).containsExactly("e1", "e2", "e3");
+    assertThat(all).extracting(SequencedTransition::seq).isSorted().doesNotHaveDuplicates();
+    assertThat(log.after(all.get(0).seq(), 10))
+        .extracting(t -> t.event().eventId())
+        .containsExactly("e2", "e3");
+    assertThat(log.after(all.get(2).seq(), 10)).isEmpty();
+  }
+
+  @Test
+  void followingTheLogRespectsTheLimitAndCanBePagedToTheEnd() {
+    log.append(
+        List.of(
+            event("e1", "r1", "fp-a", null, FindingState.NEW),
+            event("e2", "r2", "fp-a", FindingState.NEW, FindingState.OPEN),
+            event("e3", "r3", "fp-a", FindingState.OPEN, FindingState.RESOLVED)));
+
+    List<SequencedTransition> page1 = log.after(0, 2);
+    List<SequencedTransition> page2 = log.after(page1.get(1).seq(), 2);
+
+    assertThat(page1).hasSize(2);
+    assertThat(page2).extracting(t -> t.event().eventId()).containsExactly("e3");
+  }
+
+  @Test
+  void aRetriedAppendDoesNotMakeTheConsumerSeeAnEventTwice() {
+    FindingTransitionEvent e1 = event("e1", "r1", "fp-a", null, FindingState.NEW);
+    log.append(List.of(e1));
+    log.append(List.of(e1));
+
+    assertThat(log.after(0, 10)).hasSize(1);
   }
 }

@@ -106,4 +106,83 @@ abstract class RunRepositoryContract {
     assertThat(runs.latestApplied("acme/widgets", "default")).isEmpty();
     assertThat(runs.find("nope")).isEmpty();
   }
+
+  @Test
+  void aConsumerFollowingRunsSeesOnlyActiveOnesInTheOrderTheyWereApplied() {
+    runs.save(run("r1", "c1", "k1", RunStatus.ACTIVE));
+    runs.save(run("r-pr", "c9", "k9", false, true, RunStatus.SCOPE_LIMITED));
+    runs.save(run("r-late", "c0", "k0", RunStatus.LATE));
+    runs.save(run("r2", "c2", "k2", RunStatus.ACTIVE));
+
+    assertThat(runs.activeAfter(0, 10))
+        .extracting(r -> r.run().runId())
+        .containsExactly("r1", "r2");
+  }
+
+  @Test
+  void aSupersededRunDropsOutOfTheFeedAndItsReplacementTakesItsPlace() {
+    runs.save(run("r1", "c1", "k1", RunStatus.ACTIVE));
+    runs.save(run("r1b", "c1", "k1", RunStatus.ACTIVE));
+
+    assertThat(runs.activeAfter(0, 10)).extracting(r -> r.run().runId()).containsExactly("r1b");
+  }
+
+  @Test
+  void aConsumerCanResumeAfterAPositionAndPage() {
+    runs.save(run("r1", "c1", "k1", RunStatus.ACTIVE));
+    runs.save(run("r2", "c2", "k2", RunStatus.ACTIVE));
+    runs.save(run("r3", "c3", "k3", RunStatus.ACTIVE));
+
+    List<SequencedRun> first = runs.activeAfter(0, 2);
+    List<SequencedRun> rest = runs.activeAfter(first.get(1).seq(), 2);
+
+    assertThat(first).extracting(r -> r.run().runId()).containsExactly("r1", "r2");
+    assertThat(rest).extracting(r -> r.run().runId()).containsExactly("r3");
+    assertThat(first).extracting(SequencedRun::seq).isSorted().doesNotHaveDuplicates();
+  }
+
+  @Test
+  void theRunsPolicyOutcomeIsRetainedWhenRecordedAndAbsentWhenNot() {
+    runs.save(
+        new RunRecord(
+            "r1",
+            "acme/widgets",
+            "default",
+            "c1",
+            "0.1.0",
+            "k1",
+            false,
+            false,
+            List.of(),
+            AT,
+            RunStatus.ACTIVE,
+            null,
+            "WOULD_FAIL"));
+    runs.save(run("r2", "c2", "k2", RunStatus.ACTIVE));
+
+    assertThat(runs.find("r1").get().policyStatus()).isEqualTo("WOULD_FAIL");
+    assertThat(runs.find("r2").get().policyStatus()).isNull();
+  }
+
+  @Test
+  void aSupersededRunKeepsItsPolicyOutcome() {
+    runs.save(
+        new RunRecord(
+            "r1",
+            "acme/widgets",
+            "default",
+            "c1",
+            "0.1.0",
+            "k1",
+            false,
+            false,
+            List.of(),
+            AT,
+            RunStatus.ACTIVE,
+            null,
+            "FAILED"));
+    runs.save(run("r1b", "c1", "k1", RunStatus.ACTIVE));
+
+    assertThat(runs.find("r1").get().policyStatus()).isEqualTo("FAILED");
+  }
 }

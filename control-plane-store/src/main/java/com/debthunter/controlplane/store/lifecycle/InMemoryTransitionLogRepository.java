@@ -21,6 +21,15 @@ public final class InMemoryTransitionLogRepository implements TransitionLogRepos
   }
 
   @Override
+  public synchronized List<SequencedTransition> after(long afterSeq, int limit) {
+    List<SequencedTransition> result = new ArrayList<>();
+    for (int i = (int) afterSeq; i < log.size() && result.size() < limit; i++) {
+      result.add(new SequencedTransition(i + 1L, log.get(i)));
+    }
+    return result;
+  }
+
+  @Override
   public synchronized List<FindingTransitionEvent> historyOf(
       String repository, String projectSlice, String fingerprint) {
     return log.stream()

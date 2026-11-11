@@ -24,7 +24,18 @@ public final class RunBundleBuilder {
   private boolean degraded;
   private String baseCommit;
   private String pullRequest;
-  private final List<String> fingerprints = new ArrayList<>();
+  private final List<FindingSpec> findings = new ArrayList<>();
+  private String policyStatus = "PASSED";
+
+  private record FindingSpec(
+      String fingerprint,
+      String ruleId,
+      String severity,
+      String category,
+      String path,
+      Double changeFrequency,
+      Double complexityDelta) {}
+
   private final List<String> authors = new ArrayList<>();
 
   private RunBundleBuilder() {}
@@ -134,7 +145,54 @@ public final class RunBundleBuilder {
    * @return this
    */
   public RunBundleBuilder observing(String... values) {
-    fingerprints.addAll(List.of(values));
+    for (String fingerprint : values) {
+      findings.add(
+          new FindingSpec(
+              fingerprint,
+              "codemaat.hotspot",
+              "HIGH",
+              "HOTSPOT",
+              "src/" + fingerprint + ".java",
+              12.0,
+              null));
+    }
+    return this;
+  }
+
+  /**
+   * Adds one finding with explicit characteristics.
+   *
+   * @param fingerprint the finding's fingerprint
+   * @param ruleId the rule that raised it
+   * @param severity {@code CRITICAL}, {@code HIGH}, {@code MEDIUM}, {@code LOW} or {@code INFO}
+   * @param category a domain category name such as {@code HOTSPOT} or {@code ARCHITECTURE}
+   * @param path the file
+   * @param changeFrequency the hotspot change frequency, or {@code null} for none
+   * @param complexityDelta the complexity change, or {@code null} for none
+   * @return this
+   */
+  public RunBundleBuilder finding(
+      String fingerprint,
+      String ruleId,
+      String severity,
+      String category,
+      String path,
+      Double changeFrequency,
+      Double complexityDelta) {
+    findings.add(
+        new FindingSpec(
+            fingerprint, ruleId, severity, category, path, changeFrequency, complexityDelta));
+    return this;
+  }
+
+  /**
+   * Sets the policy outcome the run reports.
+   *
+   * @param status {@code PASSED}, {@code FAILED} or {@code WOULD_FAIL}
+   * @return this
+   */
+  public RunBundleBuilder policy(String status) {
+    this.policyStatus = status;
     return this;
   }
 
@@ -195,31 +253,36 @@ public final class RunBundleBuilder {
     run.put("degraded", degraded);
     run.put("baselineProvenance", "NONE");
 
-    ArrayNode findings = root.putArray("findings");
-    for (String fingerprint : fingerprints) {
-      ObjectNode finding = findings.addObject();
-      finding.put("id", "finding-" + fingerprint);
-      finding.put("ruleId", "codemaat.hotspot");
-      finding.put("category", "HOTSPOT");
-      finding.put("severity", "HIGH");
+    ArrayNode findingNodes = root.putArray("findings");
+    for (FindingSpec spec : findings) {
+      ObjectNode finding = findingNodes.addObject();
+      finding.put("id", "finding-" + spec.fingerprint());
+      finding.put("ruleId", spec.ruleId());
+      finding.put("category", spec.category());
+      finding.put("severity", spec.severity());
       finding.put("confidence", 0.9);
-      finding.put("path", "src/" + fingerprint + ".java");
+      finding.put("path", spec.path());
       finding.put("startLine", 0);
-      finding.put("message", fingerprint + " is a change hotspot");
+      finding.put("message", spec.fingerprint() + " is a finding");
       ObjectNode evidence = finding.putObject("evidence");
-      evidence.put("changeFrequency", 12.0);
+      if (spec.changeFrequency() != null) {
+        evidence.put("changeFrequency", spec.changeFrequency());
+      }
+      if (spec.complexityDelta() != null) {
+        evidence.put("complexityDelta", spec.complexityDelta());
+      }
       if (!authors.isEmpty()) {
         ArrayNode list = evidence.putArray("authors");
         authors.forEach(list::add);
       }
       finding.put("score", 12.0);
       finding.put("isNew", true);
-      finding.put("fingerprint", fingerprint);
+      finding.put("fingerprint", spec.fingerprint());
     }
     root.putObject("metrics");
     ObjectNode policy = root.putObject("policy");
     policy.put("bundleVersion", "1.0");
-    policy.put("status", "PASSED");
+    policy.put("status", policyStatus);
     policy.putArray("reasons");
     try {
       return MAPPER.writeValueAsString(root);
