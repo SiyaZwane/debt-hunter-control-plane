@@ -33,7 +33,10 @@ abstract class CoverageRepositoryContract {
         state == CoverageState.NEVER_ONBOARDED ? null : T0.minusSeconds(3600),
         state == CoverageState.NEVER_ONBOARDED ? null : "0.1.0",
         state != CoverageState.NEVER_ONBOARDED,
-        inEstate);
+        inEstate,
+        state == CoverageState.REPORTING
+            ? com.debthunter.controlplane.store.rollout.RolloutStage.STAGE_3
+            : null);
   }
 
   @Test

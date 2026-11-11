@@ -33,14 +33,16 @@ public final class JdbcCoverageRepository implements CoverageRepository {
           for (RepositoryCoverage c : report.repositories()) {
             s.update(
                 "INSERT INTO rm_coverage (repository, state, reasons, last_run_received_at,"
-                    + " last_tool_version, onboarded, in_estate) VALUES (?,?,?,?,?,?,?)",
+                    + " last_tool_version, onboarded, in_estate, rollout_stage)"
+                    + " VALUES (?,?,?,?,?,?,?,?)",
                 c.repository(),
                 c.state().name(),
                 write(c.reasons()),
                 c.lastRunReceivedAt(),
                 c.lastToolVersion(),
                 c.onboarded(),
-                c.inEstate());
+                c.inEstate(),
+                c.rolloutStage() == null ? null : c.rolloutStage().level());
           }
           s.update(
               "INSERT INTO rm_coverage_report (id, reconciled_at, estate_available, warnings)"
@@ -75,7 +77,7 @@ public final class JdbcCoverageRepository implements CoverageRepository {
           List<RepositoryCoverage> repositories =
               s.query(
                   "SELECT repository, state, reasons, last_run_received_at, last_tool_version,"
-                      + " onboarded, in_estate FROM rm_coverage ORDER BY lower(repository),"
+                      + " onboarded, in_estate, rollout_stage FROM rm_coverage ORDER BY lower(repository),"
                       + " repository",
                   row ->
                       new RepositoryCoverage(
@@ -85,12 +87,19 @@ public final class JdbcCoverageRepository implements CoverageRepository {
                           Jdbc.instant(row, "last_run_received_at"),
                           row.getString("last_tool_version"),
                           row.getBoolean("onboarded"),
-                          (Boolean) row.getObject("in_estate")));
+                          (Boolean) row.getObject("in_estate"),
+                          stage(row)));
           Object[] h = header.get();
           return Optional.of(
               new CoverageReport(
                   (java.time.Instant) h[0], (Boolean) h[1], repositories, readList((String) h[2])));
         });
+  }
+
+  private static com.debthunter.controlplane.store.rollout.RolloutStage stage(
+      java.sql.ResultSet row) throws java.sql.SQLException {
+    int level = row.getInt("rollout_stage");
+    return row.wasNull() ? null : com.debthunter.controlplane.store.rollout.RolloutStage.of(level);
   }
 
   private static String write(List<String> values) {

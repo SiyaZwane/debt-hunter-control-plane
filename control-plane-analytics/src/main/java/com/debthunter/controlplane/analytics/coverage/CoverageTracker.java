@@ -6,6 +6,8 @@ import com.debthunter.controlplane.analytics.readmodel.Staleness;
 import com.debthunter.controlplane.analytics.readmodel.Trended;
 import com.debthunter.controlplane.store.registry.OnboardedRepository;
 import com.debthunter.controlplane.store.registry.RepositoryRegistryService;
+import com.debthunter.controlplane.store.rollout.RolloutStage;
+import com.debthunter.controlplane.store.rollout.StageLookup;
 import com.debthunter.controlplane.store.runs.RunRecord;
 import com.debthunter.controlplane.store.runs.RunRepository;
 import java.time.Clock;
@@ -42,6 +44,7 @@ public final class CoverageTracker {
   private final CoverageSettings settings;
   private final Clock clock;
   private final Staleness staleness;
+  private final StageLookup stages;
 
   /**
    * Creates the tracker.
@@ -54,6 +57,29 @@ public final class CoverageTracker {
    * @param clock the source of "now": silence is a wall-clock notion
    * @param staleness decides whether a stored report is too old to trust
    */
+  public CoverageTracker(
+      RepositoryRegistryService registry,
+      RunRepository runs,
+      SourceControlEstateProvider estate,
+      CoverageRepository coverage,
+      CoverageSettings settings,
+      Clock clock,
+      Staleness staleness) {
+    this(registry, runs, estate, coverage, settings, clock, staleness, Map::of);
+  }
+
+  /**
+   * Creates the tracker, showing each repository's rollout stage in its report.
+   *
+   * @param registry the repositories that are onboarded
+   * @param runs the run store (read-only use)
+   * @param estate lists the source-control estate, or {@code null} if none is configured
+   * @param coverage where the latest report is kept
+   * @param settings what silent, degraded and drifted mean
+   * @param clock the source of "now": silence is a wall-clock notion
+   * @param staleness decides whether a stored report is too old to trust
+   * @param stages where repositories are in the rollout
+   */
   @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(
       value = "EI_EXPOSE_REP2",
       justification = "collaborators are shared services, held by reference intentionally")
@@ -64,7 +90,9 @@ public final class CoverageTracker {
       CoverageRepository coverage,
       CoverageSettings settings,
       Clock clock,
-      Staleness staleness) {
+      Staleness staleness,
+      StageLookup stages) {
+    this.stages = Objects.requireNonNull(stages, "stages");
     this.registry = Objects.requireNonNull(registry, "registry");
     this.runs = Objects.requireNonNull(runs, "runs");
     this.estate = estate;
@@ -139,7 +167,8 @@ public final class CoverageTracker {
         Comparator.comparing((RepositoryCoverage c) -> key(c.repository()))
             .thenComparing(RepositoryCoverage::repository));
 
-    CoverageReport report = new CoverageReport(now, estateAvailable, result, warnings);
+    CoverageReport report =
+        new CoverageReport(now, estateAvailable, withStages(result, warnings), warnings);
     coverage.replace(report);
     return report;
   }
@@ -154,6 +183,24 @@ public final class CoverageTracker {
   }
 
   // ---- classification --------------------------------------------------------------------------
+
+  /**
+   * Shows each repository's rollout stage. If the stages cannot be read the report says so and
+   * shows none, rather than failing a reconciliation that is otherwise sound.
+   */
+  private List<RepositoryCoverage> withStages(
+      List<RepositoryCoverage> repositories, List<String> warnings) {
+    Map<String, RolloutStage> byKey = new TreeMap<>();
+    try {
+      stages.currentStages().forEach((name, stage) -> byKey.put(key(name), stage));
+    } catch (RuntimeException e) {
+      warnings.add("Rollout stages could not be read, so none are shown: " + e.getMessage());
+      return repositories;
+    }
+    return repositories.stream()
+        .map(r -> r.withRolloutStage(byKey.get(key(r.repository()))))
+        .toList();
+  }
 
   private RepositoryCoverage classify(String repository, Instant now, Boolean inEstate) {
     List<RunRecord> recent = runs.recentForRepository(repository, settings.degradedWindow());
