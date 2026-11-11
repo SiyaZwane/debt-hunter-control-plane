@@ -17,9 +17,41 @@
       <groupId>com.debthunter</groupId>
       <artifactId>domain</artifactId>
     </dependency>
+    <!-- The data plane's own parser and evaluator: a candidate policy is judged by the same code
+         that will judge it in a pipeline, so a simulation cannot drift from reality. -->
+    <dependency>
+      <groupId>com.debthunter</groupId>
+      <artifactId>policy</artifactId>
+    </dependency>
     <dependency>
       <groupId>com.debthunter.controlplane</groupId>
       <artifactId>control-plane-store</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.debthunter.controlplane</groupId>
+      <artifactId>control-plane-testkit</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Integration tests drive real bundles through the real ingest pipeline. Ingest does not
+         depend on governance, so there is no cycle. -->
+    <dependency>
+      <groupId>com.debthunter.controlplane</groupId>
+      <artifactId>control-plane-ingest</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.tngtech.archunit</groupId>
+      <artifactId>archunit-junit5</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 </project>
