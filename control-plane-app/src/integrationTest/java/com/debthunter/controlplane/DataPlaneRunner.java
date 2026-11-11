@@ -88,6 +88,29 @@ final class DataPlaneRunner {
     return run(repository, command.toArray(String[]::new));
   }
 
+  /**
+   * Scans a repository under a central policy bundle, as a pipeline does after pulling one.
+   *
+   * @param repository the repository to scan
+   * @param outputDirectory where reports are written
+   * @param policyFile the central policy bundle
+   */
+  static Result scanUnderPolicy(Path repository, Path outputDirectory, Path policyFile)
+      throws IOException, InterruptedException {
+    return run(
+        repository,
+        Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+        "-jar",
+        jar().toString(),
+        "scan",
+        "--repo",
+        repository.toString(),
+        "--output-dir",
+        outputDirectory.toString(),
+        "--policy",
+        policyFile.toString());
+  }
+
   private static Result run(Path workingDirectory, String... command)
       throws IOException, InterruptedException {
     Process process =
