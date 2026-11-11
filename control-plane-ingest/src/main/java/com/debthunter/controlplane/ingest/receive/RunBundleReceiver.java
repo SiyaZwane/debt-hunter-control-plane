@@ -9,9 +9,9 @@ import org.slf4j.LoggerFactory;
  * Takes bundles off the intake queue and dispatches each to the next stage of ingest exactly once,
  * however many times the queue delivers it.
  *
- * <p>A run is marked processed only after the handler succeeds. If the handler throws, the run is
- * left unmarked so the redelivery is processed — which is why the queue's at-least-once delivery is
- * safe rather than lossy.
+ * <p>A run is marked processed only after the handler succeeds, and not at all if it was set aside.
+ * If the handler throws, the run is left unmarked so the redelivery is processed — which is why the
+ * queue's at-least-once delivery is safe rather than lossy.
  */
 public final class RunBundleReceiver {
 
@@ -20,7 +20,9 @@ public final class RunBundleReceiver {
     /** The handler processed it. */
     PROCESSED,
     /** It had already been processed; the redelivery was discarded. */
-    DUPLICATE
+    DUPLICATE,
+    /** It can never be processed and was set aside; its run id is still free. */
+    SET_ASIDE
   }
 
   private static final Logger log = LoggerFactory.getLogger(RunBundleReceiver.class);
@@ -57,7 +59,9 @@ public final class RunBundleReceiver {
           envelope.correlationId());
       return Outcome.DUPLICATE;
     }
-    handler.handle(envelope);
+    if (handler.handle(envelope) == RunBundleHandler.Disposition.SET_ASIDE) {
+      return Outcome.SET_ASIDE;
+    }
     deduplicator.markProcessed(envelope.runId());
     return Outcome.PROCESSED;
   }

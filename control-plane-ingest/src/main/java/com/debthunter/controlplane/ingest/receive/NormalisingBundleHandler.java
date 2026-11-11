@@ -42,7 +42,7 @@ public final class NormalisingBundleHandler implements RunBundleHandler {
   }
 
   @Override
-  public void handle(IntakeEnvelope envelope) {
+  public Disposition handle(IntakeEnvelope envelope) {
     NormalisedRunBundle normalised;
     try {
       normalised = normaliser.normalise(envelope);
@@ -53,8 +53,9 @@ public final class NormalisingBundleHandler implements RunBundleHandler {
           envelope.correlationId(),
           e.getMessage());
       quarantine.quarantine(envelope, e.getMessage());
-      return;
+      return Disposition.SET_ASIDE;
     }
     next.accept(normalised);
+    return Disposition.PROCESSED;
   }
 }

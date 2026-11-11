@@ -40,8 +40,9 @@ class NormalisingBundleHandlerTest {
   void aBundleThatCanNeverBeNormalisedIsQuarantinedAndTheHandlerReturnsNormally() {
     IntakeEnvelope envelope = IntakeEnvelopes.forBundle(RunBundleFixtures.notJson());
 
-    recordingHandler().handle(envelope);
+    var disposition = recordingHandler().handle(envelope);
 
+    assertThat(disposition).isEqualTo(RunBundleHandler.Disposition.SET_ASIDE);
     assertThat(accepted).isEmpty();
     assertThat(quarantined).singleElement().asString().contains("not valid JSON");
   }
