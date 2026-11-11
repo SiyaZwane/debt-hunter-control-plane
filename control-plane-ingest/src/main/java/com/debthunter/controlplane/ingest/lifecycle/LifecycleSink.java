@@ -12,6 +12,7 @@ import com.debthunter.controlplane.store.runs.EngineRecord;
 import com.debthunter.controlplane.store.runs.RunRecord;
 import com.debthunter.controlplane.store.runs.RunRepository;
 import com.debthunter.controlplane.store.runs.RunStatus;
+import com.debthunter.controlplane.store.suppressions.SuppressionLookup;
 import com.debthunter.domain.AnalysisRun;
 import java.time.Instant;
 import java.util.Map;

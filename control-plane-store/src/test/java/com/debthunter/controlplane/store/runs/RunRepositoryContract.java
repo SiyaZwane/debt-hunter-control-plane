@@ -4,13 +4,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class RunRepositoryTest {
+abstract class RunRepositoryContract {
 
   private static final Instant AT = Instant.parse("2026-01-01T00:00:00Z");
 
-  private final InMemoryRunRepository runs = new InMemoryRunRepository();
+  protected abstract RunRepository newRepository();
+
+  private RunRepository runs;
+
+  @BeforeEach
+  void createRepository() {
+    runs = newRepository();
+  }
 
   private static RunRecord run(String id, String commit, String key, RunStatus status) {
     return run(id, commit, key, false, false, status);

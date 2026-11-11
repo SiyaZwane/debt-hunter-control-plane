@@ -1,4 +1,4 @@
-package com.debthunter.controlplane.ingest.lifecycle;
+package com.debthunter.controlplane.store.suppressions;
 
 import java.time.Instant;
 import java.util.Map;

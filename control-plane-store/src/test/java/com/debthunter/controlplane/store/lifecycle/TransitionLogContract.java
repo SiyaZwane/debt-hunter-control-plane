@@ -7,13 +7,21 @@ import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class TransitionLogTest {
+abstract class TransitionLogContract {
 
   private static final Instant AT = Instant.parse("2026-01-01T00:00:00Z");
 
-  private final InMemoryTransitionLogRepository log = new InMemoryTransitionLogRepository();
+  protected abstract TransitionLogRepository newLog();
+
+  private TransitionLogRepository log;
+
+  @BeforeEach
+  void createLog() {
+    log = newLog();
+  }
 
   private static FindingTransitionEvent event(
       String id, String runId, String fp, FindingState from, FindingState to) {

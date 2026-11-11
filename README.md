@@ -5,12 +5,13 @@ The optional, asynchronous management and analytics control plane for
 CI/CD pipelines, maintains governance state, drives trend analytics, manages policy lifecycle, and
 surfaces portfolio dashboards.
 
-> **Status: ingestion pipeline complete (CP-M0, CP-FR-01 – 04).** A pipeline can publish a run
+> **Status: ingestion pipeline and system of record built (CP-M0, CP-FR-01 – 05).** A pipeline can publish a run
 > bundle and receive `202`; the bundle is authenticated, scope-checked, schema-validated, queued,
 > normalised across schema versions, stripped of contributor identity, de-duplicated, and applied to
-> each finding's lifecycle. See the [Roadmap](#roadmap), the
+> each finding's lifecycle, with durable storage on PostgreSQL. See the [Roadmap](#roadmap), the
 > [ingestion API](docs/ingestion-api.md), [normalisation](docs/normalisation.md),
-> [pseudonymisation](docs/pseudonymisation.md), and [lifecycle](docs/lifecycle.md).
+> [pseudonymisation](docs/pseudonymisation.md), [lifecycle](docs/lifecycle.md), and the
+> [system of record](docs/system-of-record.md).
 
 ## The one constraint that overrides everything else
 
@@ -110,7 +111,8 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-02 | Schema normalisation across the current and N-1 versions | Done |
 | CP-FR-03 | Contributor identity pseudonymised at ingest, audited re-identification | Done, with gaps ([details](docs/pseudonymisation.md#not-done-yet)) |
 | CP-FR-04 | Idempotency guard and finding lifecycle state machine | Done, with gaps ([details](docs/lifecycle.md#not-done--assumptions)) |
-| CP-FR-05 – 07 | System of record, analytics, coverage tracking | Next: CP-FR-05 |
+| CP-FR-05 | System of record: PostgreSQL stores, registry, suppressions, baselines, policy catalogue, evidence | Done, not yet wired into the app ([details](docs/system-of-record.md#not-done--assumptions)) |
+| CP-FR-06 – 07 | Trend analytics, coverage tracking | Next: CP-FR-06 |
 | CP-FR-08 – 10 | Policy authoring, signing and publication, rollout stages | Planned |
 | CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
 | CP-FR-13 – 16 | Work items, notifications, serve layer | Planned |
@@ -175,3 +177,19 @@ step, rather than waiting for the final release-gate test.
 - `CpBc11` lives in `control-plane-ingest`, not `-store`.
 - The suppression-expiry arrow in the spec's diagram points to `RESOLVED`; CP-AC-20 says `OPEN`, so the
   criterion was followed.
+
+## Decisions and known gaps from CP-FR-05
+
+- **PostgreSQL, plain JDBC, Flyway** rather than Spring Data JPA on Azure SQL, to keep Spring out of
+  the store module. Moving to SQL Server is a port.
+- **The app does not use the durable stores yet.** Wiring a `DataSource`, running migrations, and
+  starting the queue listener is a separate step.
+- **The pseudonym directory is still in-memory** and deliberately has no table in this schema.
+- **The suppression warning falls due at the earlier of `max − 7` days and `expiry − 7` days**, so a
+  short suppression is not warned about after it has lapsed. The prompt's formula alone would miss it.
+- **The transition log's append-only rule is enforced by a database trigger**, not only by the code.
+- The lifecycle now reads the real suppression register; `SuppressionLookup` moved to the store module.
+- The ArchUnit rule about the store was restated as "the store cannot depend on ingest", since the
+  JDBC store legitimately uses `javax.sql` and Jackson.
+- `ratifiedBy` on policy bundles is not pseudonymised (an approver is not a contributor).
+- Nothing yet calls the evidence-expiry job.

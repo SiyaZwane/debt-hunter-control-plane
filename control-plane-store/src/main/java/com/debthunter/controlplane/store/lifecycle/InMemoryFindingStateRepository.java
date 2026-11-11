@@ -1,7 +1,6 @@
 package com.debthunter.controlplane.store.lifecycle;
 
 import java.util.Collection;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -27,12 +26,5 @@ public final class InMemoryFindingStateRepository implements FindingStateReposit
 
   private static String key(String repository, String projectSlice) {
     return repository + '\u0000' + projectSlice;
-  }
-
-  /** Copy of every record, for tests. */
-  public Map<String, FindingStateRecord> snapshot() {
-    Map<String, FindingStateRecord> all = new HashMap<>();
-    bySlice.forEach((k, v) -> v.forEach((fp, r) -> all.put(k + '\u0000' + fp, r)));
-    return all;
   }
 }

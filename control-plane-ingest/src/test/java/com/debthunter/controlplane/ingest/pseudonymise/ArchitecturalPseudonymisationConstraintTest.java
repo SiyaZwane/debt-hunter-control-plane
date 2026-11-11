@@ -1,6 +1,5 @@
 package com.debthunter.controlplane.ingest.pseudonymise;
 
-import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 import com.tngtech.archunit.core.domain.JavaClasses;
@@ -61,16 +60,16 @@ class ArchitecturalPseudonymisationConstraintTest {
   }
 
   @Test
-  void theFindingStoreTakesNothingThatCouldHoldARawIdentity() {
+  void theStoreCannotSeeAnythingFromIngestSoItCannotBeHandedAnUnpseudonymisedBundle() {
     ArchRule rule =
-        classes()
+        noClasses()
             .that()
-            .resideInAPackage("com.debthunter.controlplane.store.findings..")
+            .resideInAPackage("com.debthunter.controlplane.store..")
             .should()
-            .onlyDependOnClassesThat()
-            .resideInAnyPackage(
-                "com.debthunter.controlplane.store..", "com.debthunter.domain..", "java..")
-            .because("the store must not be able to see a normalised, un-pseudonymised bundle");
+            .dependOnClassesThat()
+            .resideInAPackage("com.debthunter.controlplane.ingest..")
+            .because(
+                "the store accepts only types built from Pseudonyms, and ingest owns the rest");
 
     rule.check(production);
   }

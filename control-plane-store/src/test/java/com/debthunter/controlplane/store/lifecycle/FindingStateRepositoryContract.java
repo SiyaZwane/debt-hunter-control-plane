@@ -3,11 +3,19 @@ package com.debthunter.controlplane.store.lifecycle;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class FindingStateRepositoryTest {
+abstract class FindingStateRepositoryContract {
 
-  private final InMemoryFindingStateRepository repository = new InMemoryFindingStateRepository();
+  protected abstract FindingStateRepository newRepository();
+
+  private FindingStateRepository repository;
+
+  @BeforeEach
+  void createRepository() {
+    repository = newRepository();
+  }
 
   private static FindingStateRecord record(
       String slice, String fp, FindingState state, String commit) {
@@ -81,12 +89,5 @@ class FindingStateRepositoryTest {
     assertThat(FindingState.OPEN.canMoveTo(FindingState.NEW)).isFalse();
     assertThat(FindingState.canStartIn(FindingState.NEW)).isTrue();
     assertThat(FindingState.canStartIn(FindingState.OPEN)).isFalse();
-  }
-
-  @Test
-  void aSnapshotShowsEveryRecord() {
-    repository.putAll(List.of(record("default", "fp-a", FindingState.NEW, "c1")));
-
-    assertThat(repository.snapshot()).hasSize(1);
   }
 }

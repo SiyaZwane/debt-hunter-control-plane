@@ -8,9 +8,10 @@ import com.debthunter.domain.Category;
 import com.debthunter.domain.Severity;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class PseudonymiserPersistenceTest {
+abstract class PseudonymisedFindingStoreContract {
 
   private static final Pseudonym P1 = Pseudonym.fromStored("1".repeat(64));
   private static final Pseudonym P2 = Pseudonym.fromStored("2".repeat(64));
@@ -32,7 +33,14 @@ class PseudonymiserPersistenceTest {
         List.of(contributors));
   }
 
-  private final InMemoryPseudonymisedFindingStore store = new InMemoryPseudonymisedFindingStore();
+  protected abstract PseudonymisedFindingStore newStore();
+
+  private PseudonymisedFindingStore store;
+
+  @BeforeEach
+  void createStore() {
+    store = newStore();
+  }
 
   @Test
   void aStoredRunReadsBackWithItsPseudonymsIntact() {

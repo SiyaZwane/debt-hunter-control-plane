@@ -6,6 +6,7 @@ import com.debthunter.controlplane.store.lifecycle.FindingState;
 import com.debthunter.controlplane.store.lifecycle.FindingStateRecord;
 import com.debthunter.controlplane.store.lifecycle.FindingTransitionEvent;
 import com.debthunter.controlplane.store.lifecycle.TransitionCause;
+import com.debthunter.controlplane.store.suppressions.InMemorySuppressionLookup;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;

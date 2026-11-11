@@ -6,7 +6,6 @@ import com.debthunter.controlplane.ingest.intake.IntakeEnvelopes;
 import com.debthunter.controlplane.ingest.intake.KafkaIntakeListener;
 import com.debthunter.controlplane.ingest.intake.KafkaRunIntakeQueuePublisher;
 import com.debthunter.controlplane.ingest.lifecycle.InMemoryCommitGraph;
-import com.debthunter.controlplane.ingest.lifecycle.InMemorySuppressionLookup;
 import com.debthunter.controlplane.ingest.lifecycle.LifecycleSink;
 import com.debthunter.controlplane.ingest.normalise.RunNormaliser;
 import com.debthunter.controlplane.ingest.pseudonymise.CompositeRunSink;
@@ -19,17 +18,26 @@ import com.debthunter.controlplane.ingest.receive.InMemoryRunBundleDeduplicator;
 import com.debthunter.controlplane.ingest.receive.NormalisingBundleHandler;
 import com.debthunter.controlplane.ingest.receive.RunBundleReceiver;
 import com.debthunter.controlplane.store.findings.InMemoryPseudonymisedFindingStore;
+import com.debthunter.controlplane.store.findings.JdbcPseudonymisedFindingStore;
+import com.debthunter.controlplane.store.findings.PseudonymisedFindingStore;
 import com.debthunter.controlplane.store.identity.InMemoryPseudonymDirectory;
+import com.debthunter.controlplane.store.lifecycle.FindingStateRepository;
 import com.debthunter.controlplane.store.lifecycle.InMemoryFindingStateRepository;
 import com.debthunter.controlplane.store.lifecycle.InMemoryTransitionLogRepository;
+import com.debthunter.controlplane.store.lifecycle.JdbcFindingStateRepository;
+import com.debthunter.controlplane.store.lifecycle.JdbcTransitionLogRepository;
 import com.debthunter.controlplane.store.lifecycle.TransitionLogRepository;
 import com.debthunter.controlplane.store.runs.InMemoryRunRepository;
+import com.debthunter.controlplane.store.runs.JdbcRunRepository;
+import com.debthunter.controlplane.store.runs.RunRepository;
+import com.debthunter.controlplane.store.suppressions.InMemorySuppressionLookup;
 import com.debthunter.controlplane.testkit.KafkaTestBroker;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 
 /**
  * The whole ingest path from the queue to the stores: a real Kafka broker, the listener, the
@@ -39,21 +47,37 @@ final class IngestPipeline implements AutoCloseable {
 
   /** Everything the pipeline writes to, so a second pipeline can share it (a "restart"). */
   static final class Stores {
-    final InMemoryPseudonymisedFindingStore findings = new InMemoryPseudonymisedFindingStore();
+    final PseudonymisedFindingStore findings;
     final InMemoryPseudonymDirectory directory = new InMemoryPseudonymDirectory();
-    final InMemoryRunRepository runs = new InMemoryRunRepository();
-    final InMemoryFindingStateRepository states = new InMemoryFindingStateRepository();
-    final InMemoryTransitionLogRepository transitions = new InMemoryTransitionLogRepository();
+    final RunRepository runs;
+    final FindingStateRepository states;
+    final TransitionLogRepository transitions;
     final InMemoryCommitGraph commits = new InMemoryCommitGraph();
     final InMemorySuppressionLookup suppressions = new InMemorySuppressionLookup();
+
+    /** In-memory stores. */
+    Stores() {
+      findings = new InMemoryPseudonymisedFindingStore();
+      runs = new InMemoryRunRepository();
+      states = new InMemoryFindingStateRepository();
+      transitions = new InMemoryTransitionLogRepository();
+    }
+
+    /** Durable stores over PostgreSQL. The pseudonym directory is deliberately not durable here. */
+    Stores(DataSource dataSource) {
+      findings = new JdbcPseudonymisedFindingStore(dataSource);
+      runs = new JdbcRunRepository(dataSource);
+      states = new JdbcFindingStateRepository(dataSource);
+      transitions = new JdbcTransitionLogRepository(dataSource);
+    }
   }
 
   final Stores stores;
-  final InMemoryPseudonymisedFindingStore findings;
+  final PseudonymisedFindingStore findings;
   final InMemoryPseudonymDirectory directory;
-  final InMemoryRunRepository runs;
-  final InMemoryFindingStateRepository states;
-  final InMemoryTransitionLogRepository transitions;
+  final RunRepository runs;
+  final FindingStateRepository states;
+  final TransitionLogRepository transitions;
   final InMemoryCommitGraph commits;
   final InMemorySuppressionLookup suppressions;
   final List<String> quarantinedRunIds = new CopyOnWriteArrayList<>();
