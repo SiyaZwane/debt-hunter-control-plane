@@ -1,8 +1,10 @@
 package com.debthunter.controlplane;
 
+import com.debthunter.controlplane.api.admin.AdminApiConfiguration;
 import com.debthunter.controlplane.api.ingestion.IngestionApiConfiguration;
 import com.debthunter.controlplane.api.ingestion.RequestRateLimiter;
 import com.debthunter.controlplane.api.ingestion.SlidingWindowRequestRateLimiter;
+import com.debthunter.controlplane.api.security.AdminAccess;
 import com.debthunter.controlplane.api.security.ControlPlaneJwtDecoders;
 import com.debthunter.controlplane.api.security.IngestionSecurityConfiguration;
 import com.debthunter.controlplane.egress.alert.LoggingSecurityAlertPublisher;
@@ -25,6 +27,7 @@ import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(ControlPlaneProperties.class)
 @Import({
+  AdminApiConfiguration.class,
   IngestionApiConfiguration.class,
   IngestionSecurityConfiguration.class,
   StoreConfiguration.class,
@@ -62,6 +65,17 @@ public class ControlPlaneConfiguration {
     }
     return ControlPlaneJwtDecoders.create(
         URI.create(security.jwkSetUri()), security.issuer(), security.audience());
+  }
+
+  /**
+   * Which role in a token grants administration of the control plane.
+   *
+   * @param properties the control-plane configuration
+   * @return the access rule the security chain enforces on the administration routes
+   */
+  @Bean
+  public AdminAccess adminAccess(ControlPlaneProperties properties) {
+    return new AdminAccess(properties.security().adminRole());
   }
 
   /**

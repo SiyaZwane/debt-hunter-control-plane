@@ -57,6 +57,25 @@ public final class TestJwtIssuer implements AutoCloseable {
   }
 
   /**
+   * Signs a valid token that carries application roles, as an Entra app-role assignment would.
+   *
+   * @param subject the {@code sub} claim
+   * @param roles the {@code roles} claim values
+   * @return the compact serialised token
+   */
+  public String tokenWithRoles(String subject, String... roles) {
+    return sign(
+        new JWTClaimsSet.Builder()
+            .subject(subject)
+            .issuer(ISSUER)
+            .audience(AUDIENCE)
+            .issueTime(Date.from(Instant.now().minus(Duration.ofMinutes(1))))
+            .expirationTime(Date.from(Instant.now().plus(Duration.ofHours(1))))
+            .claim("roles", java.util.List.of(roles))
+            .build());
+  }
+
+  /**
    * Signs a token with explicit claims, for negative-path tests.
    *
    * @param subject the {@code sub} claim
@@ -66,14 +85,17 @@ public final class TestJwtIssuer implements AutoCloseable {
    * @return the compact serialised token
    */
   public String token(String subject, String issuer, String audience, Instant expiresAt) {
-    JWTClaimsSet claims =
+    return sign(
         new JWTClaimsSet.Builder()
             .subject(subject)
             .issuer(issuer)
             .audience(audience)
             .issueTime(Date.from(Instant.now().minus(Duration.ofMinutes(1))))
             .expirationTime(Date.from(expiresAt))
-            .build();
+            .build());
+  }
+
+  private String sign(JWTClaimsSet claims) {
     SignedJWT jwt =
         new SignedJWT(
             new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(signingKey.getKeyID()).build(), claims);

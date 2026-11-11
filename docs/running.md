@@ -39,6 +39,7 @@ The schema is migrated (Flyway) before anything else uses the database.
 | Property | Environment | Default |
 |---|---|---|
 | `security.jwk-set-uri` / `.issuer` / `.audience` | `CONTROL_PLANE_JWK_SET_URI` / `_JWT_ISSUER` / `_JWT_AUDIENCE` | **required** |
+| `security.admin-role` | `CONTROL_PLANE_ADMIN_ROLE` | `ControlPlane.Admin` |
 | `database.url` / `.username` / `.password` | `CONTROL_PLANE_DB_URL` / `_DB_USER` / `_DB_PASSWORD` | **url required** |
 | `database.max-pool-size` | | `10` |
 | `pseudonym.key` | `CONTROL_PLANE_PSEUDONYM_KEY` | **required**, base64, ≥ 32 bytes |
@@ -55,10 +56,9 @@ All keys are under `debthunter.controlplane.`.
 
 ## Onboarding a repository
 
-Nothing can be published until a repository is onboarded and a workload is granted it. There is **no
-admin API yet**, so today this is done through `RepositoryRegistryService` (or SQL against
-`onboarded_repository` and `workload_scope`). Until the query/admin API exists this is the main
-operational gap.
+Nothing can be published until a repository is onboarded and a workload is granted it. An
+administrator does this over HTTP with the [administration API](admin-api.md); no database access is
+needed.
 
 ## Known limits of the wiring
 

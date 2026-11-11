@@ -9,6 +9,8 @@ debthunter:
       jwk-set-uri: ${CONTROL_PLANE_JWK_SET_URI:}
       issuer: ${CONTROL_PLANE_JWT_ISSUER:}
       audience: ${CONTROL_PLANE_JWT_AUDIENCE:}
+      # The role in a token's "roles" claim that grants administration. Pipelines do not carry it.
+      admin-role: ${CONTROL_PLANE_ADMIN_ROLE:ControlPlane.Admin}
     intake:
       bootstrap-servers: ${CONTROL_PLANE_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
       topic: debt-hunter.run-intake

@@ -11,7 +11,7 @@ surfaces portfolio dashboards.
 > each finding's lifecycle, with durable storage on PostgreSQL. See the [Roadmap](#roadmap), the
 > [ingestion API](docs/ingestion-api.md), [normalisation](docs/normalisation.md),
 > [pseudonymisation](docs/pseudonymisation.md), [lifecycle](docs/lifecycle.md), and the
-> [system of record](docs/system-of-record.md), and [running the control plane](docs/running.md).
+> [system of record](docs/system-of-record.md), [running the control plane](docs/running.md), and the [administration API](docs/admin-api.md).
 
 ## The one constraint that overrides everything else
 
@@ -113,6 +113,7 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-04 | Idempotency guard and finding lifecycle state machine | Done, with gaps ([details](docs/lifecycle.md#not-done--assumptions)) |
 | CP-FR-05 | System of record: PostgreSQL stores, registry, suppressions, baselines, policy catalogue, evidence | Done |
 | App wiring | Database, registry, pipeline, queue listener and housekeeping assembled in `control-plane-app` | Done ([details](docs/running.md)) |
+| Admin API | Onboard repositories and grant pipelines over HTTP, role-protected and audited | Done ([details](docs/admin-api.md)) |
 | CP-FR-06 – 07 | Trend analytics, coverage tracking | Next: CP-FR-06 |
 | CP-FR-08 – 10 | Policy authoring, signing and publication, rollout stages | Planned |
 | CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
@@ -196,11 +197,24 @@ step, rather than waiting for the final release-gate test.
 
 - **The app needs a database, a pseudonymisation key and token config, and refuses to start without
   any of them.** See [running](docs/running.md).
-- **Repository scope is no longer configuration**: the registry decides. There is **no admin API yet**,
-  so onboarding a repository and granting a workload is done through the registry service or SQL.
+- **Repository scope is no longer configuration**: the registry decides, and an administrator manages
+  it through the [administration API](docs/admin-api.md).
 - **The pseudonym key comes from configuration**, not Key Vault, and **the directory is in memory**.
 - **There is no commit-graph source**, so out-of-order protection is inactive in a real deployment.
 - **Quarantine keeps metadata only**: the bundle carries raw identity and stays on the intake topic.
 - **Suppression warnings are only logged**; there is no notification channel yet.
 - **The app's integration tests now need Docker** (Kafka and PostgreSQL).
 - **No Dockerfile or deployment manifest yet.**
+
+## Decisions and known gaps from the administration API
+
+- **Administration is gated by a role in the token** (`ControlPlane.Admin`, configurable), checked by
+  the security chain. A pipeline's token gets 403 on every admin route.
+- **Changes are audited before they are applied, and refused if the audit cannot be written.** The
+  audit trail is a log line, not a durable table.
+- **Input is rejected, not cleaned up** (including padded whitespace).
+- **One role does everything**: onboarding and granting are not separated, and there is no second
+  approver.
+- **Only the registry has admin routes**; policy, suppressions and baselines do not yet.
+- **Repository identifiers may contain slashes in the URL**, but a leading slash (today's local-path
+  identifiers) is awkward.

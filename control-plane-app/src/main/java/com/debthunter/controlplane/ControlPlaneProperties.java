@@ -31,8 +31,14 @@ public record ControlPlaneProperties(
    * @param jwkSetUri where the issuer publishes its signing keys
    * @param issuer the {@code iss} claim a token must carry
    * @param audience the {@code aud} value that must be among a token's audiences
+   * @param adminRole the value a token's {@code roles} claim must contain to administer the control
+   *     plane; pipelines' tokens do not carry it
    */
-  public record Security(String jwkSetUri, String issuer, String audience) {}
+  public record Security(
+      String jwkSetUri,
+      String issuer,
+      String audience,
+      @DefaultValue("ControlPlane.Admin") String adminRole) {}
 
   /**
    * The intake queue.

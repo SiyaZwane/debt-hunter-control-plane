@@ -34,11 +34,11 @@ public final class RepositoryRegistryService implements RepositoryScopeLookup {
    * Onboards a repository.
    *
    * @param repository its entry
-   * @throws IllegalStateException if it is already onboarded
+   * @throws AlreadyOnboardedException if it is already onboarded
    */
   public void onboard(OnboardedRepository repository) {
     if (registry.find(repository.repository()).isPresent()) {
-      throw new IllegalStateException("Already onboarded: " + repository.repository());
+      throw new AlreadyOnboardedException(repository.repository());
     }
     registry.save(repository);
   }
@@ -47,7 +47,7 @@ public final class RepositoryRegistryService implements RepositoryScopeLookup {
    * Changes an onboarded repository's entry.
    *
    * @param repository its new entry
-   * @throws IllegalStateException if it is not onboarded
+   * @throws NotOnboardedException if it is not onboarded
    */
   public void update(OnboardedRepository repository) {
     requireOnboarded(repository.repository());
@@ -104,11 +104,22 @@ public final class RepositoryRegistryService implements RepositoryScopeLookup {
    *
    * @param workloadIdentity the identity
    * @param repository the repository
-   * @throws IllegalStateException if the repository is not onboarded
+   * @throws NotOnboardedException if the repository is not onboarded
    */
   public void grantWorkload(String workloadIdentity, String repository) {
     requireOnboarded(repository);
     registry.grant(workloadIdentity, repository);
+  }
+
+  /**
+   * The repositories a workload identity has been granted.
+   *
+   * @param workloadIdentity the identity
+   * @return the repositories, which may include ones since offboarded only if a grant was left
+   *     behind by something other than this service
+   */
+  public java.util.Set<String> repositoriesOf(String workloadIdentity) {
+    return registry.repositoriesOf(workloadIdentity);
   }
 
   /**
@@ -129,7 +140,7 @@ public final class RepositoryRegistryService implements RepositoryScopeLookup {
 
   private void requireOnboarded(String repository) {
     if (registry.find(repository).isEmpty()) {
-      throw new IllegalStateException("Not onboarded: " + repository);
+      throw new NotOnboardedException(repository);
     }
   }
 }
