@@ -44,6 +44,17 @@ public interface RunRepository {
   List<SequencedRun> activeAfter(long afterSeq, int limit);
 
   /**
+   * A repository's most recent runs of any status (including pull-request, late and superseded
+   * ones), newest first. A pipeline that only ever runs on pull requests is still reporting, which
+   * is what coverage tracking needs to know. Read-only.
+   *
+   * @param repository the repository
+   * @param limit the most runs to return
+   * @return its latest runs, newest first
+   */
+  List<RunRecord> recentForRepository(String repository, int limit);
+
+  /**
    * Saves a run and, in the same operation, marks earlier runs of the same composite key as
    * superseded by it. Idempotent for the same run id.
    *

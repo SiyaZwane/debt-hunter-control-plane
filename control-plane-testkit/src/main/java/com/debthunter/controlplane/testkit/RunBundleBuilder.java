@@ -22,6 +22,7 @@ public final class RunBundleBuilder {
   private String toolVersion = "0.1.0";
   private String timestamp = "2026-01-01T00:00:00Z";
   private boolean degraded;
+  private String historyDepth = "FULL";
   private String baseCommit;
   private String pullRequest;
   private final List<FindingSpec> findings = new ArrayList<>();
@@ -122,6 +123,17 @@ public final class RunBundleBuilder {
    */
   public RunBundleBuilder degraded() {
     this.degraded = true;
+    return this;
+  }
+
+  /**
+   * Sets how much Git history the analysis had.
+   *
+   * @param value {@code FULL}, {@code PARTIAL} or {@code SHALLOW}
+   * @return this
+   */
+  public RunBundleBuilder historyDepth(String value) {
+    this.historyDepth = value;
     return this;
   }
 
@@ -238,7 +250,7 @@ public final class RunBundleBuilder {
     } else {
       run.put("pullRequest", pullRequest);
     }
-    run.put("historyDepth", "FULL");
+    run.put("historyDepth", historyDepth);
     ArrayNode engines = run.putArray("engines");
     ObjectNode engine = engines.addObject();
     engine.put("id", "code-maat");

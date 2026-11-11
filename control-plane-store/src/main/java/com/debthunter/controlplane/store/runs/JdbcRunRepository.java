@@ -10,7 +10,8 @@ public final class JdbcRunRepository implements RunRepository {
 
   private static final String COLUMNS =
       "run_id, repository, project_slice, commit_id, tool_version, composite_key, degraded,"
-          + " scope_limited, committed_at, status, superseded_by, policy_status";
+          + " scope_limited, committed_at, status, superseded_by, policy_status, received_at,"
+          + " history_depth";
 
   private final Jdbc jdbc;
 
@@ -70,6 +71,19 @@ public final class JdbcRunRepository implements RunRepository {
   }
 
   @Override
+  public List<RunRecord> recentForRepository(String repository, int limit) {
+    return jdbc.inTransaction(
+        s ->
+            s.query(
+                "SELECT "
+                    + COLUMNS
+                    + " FROM run WHERE repository = ? ORDER BY applied_seq DESC LIMIT ?",
+                row -> map(s, row),
+                repository,
+                limit));
+  }
+
+  @Override
   public void save(RunRecord run) {
     jdbc.inTransaction(
         s -> {
@@ -88,7 +102,8 @@ public final class JdbcRunRepository implements RunRepository {
           s.update(
               "INSERT INTO run (run_id, repository, project_slice, commit_id, tool_version,"
                   + " composite_key, degraded, scope_limited, committed_at, status, superseded_by,"
-                  + " policy_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                  + " policy_status, received_at, history_depth)"
+                  + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
               run.runId(),
               run.repository(),
               run.projectSlice(),
@@ -100,7 +115,9 @@ public final class JdbcRunRepository implements RunRepository {
               run.committedAt(),
               run.status().name(),
               run.supersededBy(),
-              run.policyStatus());
+              run.policyStatus(),
+              run.receivedAt(),
+              run.historyDepth());
           int ordinal = 0;
           for (EngineRecord engine : run.engines()) {
             s.update(
@@ -135,6 +152,8 @@ public final class JdbcRunRepository implements RunRepository {
         Jdbc.instant(row, "committed_at"),
         RunStatus.valueOf(row.getString("status")),
         row.getString("superseded_by"),
-        row.getString("policy_status"));
+        row.getString("policy_status"),
+        Jdbc.instant(row, "received_at"),
+        row.getString("history_depth"));
   }
 }

@@ -185,4 +185,99 @@ abstract class RunRepositoryContract {
 
     assertThat(runs.find("r1").get().policyStatus()).isEqualTo("FAILED");
   }
+
+  @Test
+  void whenARunWasReceivedAndHowMuchHistoryItHadAreRetained() {
+    Instant received = Instant.parse("2026-02-02T02:02:02Z");
+    runs.save(
+        new RunRecord(
+            "r1",
+            "acme/widgets",
+            "default",
+            "c1",
+            "0.1.0",
+            "k1",
+            false,
+            false,
+            List.of(),
+            AT,
+            RunStatus.ACTIVE,
+            null,
+            "PASSED",
+            received,
+            "SHALLOW"));
+    runs.save(run("r2", "c2", "k2", RunStatus.ACTIVE));
+
+    assertThat(runs.find("r1").get().receivedAt()).isEqualTo(received);
+    assertThat(runs.find("r1").get().historyDepth()).isEqualTo("SHALLOW");
+    assertThat(runs.find("r2").get().receivedAt()).isNull();
+    assertThat(runs.find("r2").get().historyDepth()).isNull();
+  }
+
+  @Test
+  void aSupersededRunKeepsWhenItWasReceivedAndItsHistoryDepth() {
+    Instant received = Instant.parse("2026-02-02T02:02:02Z");
+    runs.save(
+        new RunRecord(
+            "r1",
+            "acme/widgets",
+            "default",
+            "c1",
+            "0.1.0",
+            "k1",
+            false,
+            false,
+            List.of(),
+            AT,
+            RunStatus.ACTIVE,
+            null,
+            "PASSED",
+            received,
+            "PARTIAL"));
+    runs.save(run("r1b", "c1", "k1", RunStatus.ACTIVE));
+
+    assertThat(runs.find("r1").get().receivedAt()).isEqualTo(received);
+    assertThat(runs.find("r1").get().historyDepth()).isEqualTo("PARTIAL");
+  }
+
+  @Test
+  void aRepositorysRecentRunsComeNewestFirstWhateverTheirStatus() {
+    runs.save(run("r1", "c1", "k1", RunStatus.ACTIVE));
+    runs.save(run("r-pr", "c9", "k9", false, true, RunStatus.SCOPE_LIMITED));
+    runs.save(run("r-late", "c0", "k0", RunStatus.LATE));
+    runs.save(run("r2", "c2", "k2", RunStatus.ACTIVE));
+
+    assertThat(runs.recentForRepository("acme/widgets", 10))
+        .extracting(RunRecord::runId)
+        .containsExactly("r2", "r-late", "r-pr", "r1");
+  }
+
+  @Test
+  void recentRunsHonourTheLimitAndAreSeparatePerRepository() {
+    runs.save(run("r1", "c1", "k1", RunStatus.ACTIVE));
+    runs.save(run("r2", "c2", "k2", RunStatus.ACTIVE));
+    runs.save(run("r3", "c3", "k3", RunStatus.ACTIVE));
+    runs.save(
+        new RunRecord(
+            "other-1",
+            "other/repo",
+            "default",
+            "c1",
+            "0.1.0",
+            "ko",
+            false,
+            false,
+            List.of(),
+            AT,
+            RunStatus.ACTIVE,
+            null));
+
+    assertThat(runs.recentForRepository("acme/widgets", 2))
+        .extracting(RunRecord::runId)
+        .containsExactly("r3", "r2");
+    assertThat(runs.recentForRepository("other/repo", 5))
+        .extracting(RunRecord::runId)
+        .containsExactly("other-1");
+    assertThat(runs.recentForRepository("nobody/nothing", 5)).isEmpty();
+  }
 }

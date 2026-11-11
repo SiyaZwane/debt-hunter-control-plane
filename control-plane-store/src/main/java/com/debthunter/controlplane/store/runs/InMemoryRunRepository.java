@@ -40,6 +40,16 @@ public final class InMemoryRunRepository implements RunRepository {
   }
 
   @Override
+  public synchronized List<RunRecord> recentForRepository(String repository, int limit) {
+    return byId.values().stream()
+        .filter(r -> r.repository().equals(repository))
+        .sorted(
+            java.util.Comparator.comparingLong((RunRecord r) -> seqById.get(r.runId())).reversed())
+        .limit(limit)
+        .toList();
+  }
+
+  @Override
   public synchronized void save(RunRecord run) {
     if (byId.containsKey(run.runId())) {
       return;

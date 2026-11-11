@@ -108,10 +108,53 @@ public record ControlPlaneProperties(
    * @param projectionInterval how often the projector catches up
    * @param staleAfter how old the read models may be before query results are flagged stale
    * @param batchSize how many runs or transitions are projected and committed at a time
+   * @param coverage coverage and adoption tracking
    */
   public record Analytics(
       @DefaultValue("true") boolean projectorEnabled,
       @DefaultValue("PT30S") Duration projectionInterval,
       @DefaultValue("PT15M") Duration staleAfter,
-      @DefaultValue("500") int batchSize) {}
+      @DefaultValue("500") int batchSize,
+      @DefaultValue Coverage coverage) {}
+
+  /**
+   * Coverage and adoption tracking: reconciling the registry against the source-control estate.
+   *
+   * @param enabled whether this instance reconciles on a schedule
+   * @param reconcileInterval how often (default nightly)
+   * @param initialDelay how long after start-up the first reconciliation runs
+   * @param cadence how long an onboarded repository may go without a run before it is silent
+   * @param currentToolMajor the data-plane major version that counts as current; anything else is
+   *     version drift
+   * @param degradedWindow how many of a repository's latest runs must all be degraded or shallow
+   *     for it to count as consistently so
+   * @param staleAfter how old the stored report may be before it is flagged stale
+   * @param estate which source-control estate to compare against
+   */
+  public record Coverage(
+      @DefaultValue("true") boolean enabled,
+      @DefaultValue("P1D") Duration reconcileInterval,
+      @DefaultValue("PT1M") Duration initialDelay,
+      @DefaultValue("P7D") Duration cadence,
+      @DefaultValue("0") int currentToolMajor,
+      @DefaultValue("3") int degradedWindow,
+      @DefaultValue("PT36H") Duration staleAfter,
+      @DefaultValue Estate estate) {}
+
+  /**
+   * The source-control estate. With no provider configured, silence and drift are still detected
+   * but repositories that were never onboarded cannot be found, and every report says so.
+   *
+   * @param provider {@code none}, {@code github} or {@code azure}
+   * @param organization the GitHub organisation or Azure DevOps organisation to list
+   * @param token a GitHub token or Azure DevOps personal access token able to read repositories
+   * @param apiUrl the API base URL; blank for the public one
+   * @param timeout connect and request timeout
+   */
+  public record Estate(
+      @DefaultValue("none") String provider,
+      String organization,
+      String token,
+      String apiUrl,
+      @DefaultValue("PT20S") Duration timeout) {}
 }

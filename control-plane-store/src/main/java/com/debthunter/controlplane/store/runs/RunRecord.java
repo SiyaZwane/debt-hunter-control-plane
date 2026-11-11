@@ -22,6 +22,10 @@ import java.util.Objects;
  * @param supersededBy the run that replaced it, if any
  * @param policyStatus the policy outcome the run reported ({@code PASSED}, {@code FAILED} or {@code
  *     WOULD_FAIL}), or {@code null} if not recorded
+ * @param receivedAt when the control plane received the bundle (as opposed to when the commit was
+ *     made), or {@code null} if not recorded. Coverage tracking measures silence against this
+ * @param historyDepth how much Git history the analysis had ({@code FULL}, {@code PARTIAL} or
+ *     {@code SHALLOW}), or {@code null} if not recorded
  */
 public record RunRecord(
     String runId,
@@ -36,9 +40,44 @@ public record RunRecord(
     Instant committedAt,
     RunStatus status,
     String supersededBy,
-    String policyStatus) {
+    String policyStatus,
+    Instant receivedAt,
+    String historyDepth) {
 
-  /** A run with no recorded policy outcome. */
+  /** A run with a recorded policy outcome but no reception time or history depth. */
+  public RunRecord(
+      String runId,
+      String repository,
+      String projectSlice,
+      String commit,
+      String toolVersion,
+      String compositeKey,
+      boolean degraded,
+      boolean scopeLimited,
+      List<EngineRecord> engines,
+      Instant committedAt,
+      RunStatus status,
+      String supersededBy,
+      String policyStatus) {
+    this(
+        runId,
+        repository,
+        projectSlice,
+        commit,
+        toolVersion,
+        compositeKey,
+        degraded,
+        scopeLimited,
+        engines,
+        committedAt,
+        status,
+        supersededBy,
+        policyStatus,
+        null,
+        null);
+  }
+
+  /** A run with none of the optional facts recorded. */
   public RunRecord(
       String runId,
       String repository,
@@ -65,6 +104,8 @@ public record RunRecord(
         committedAt,
         status,
         supersededBy,
+        null,
+        null,
         null);
   }
 
@@ -99,6 +140,8 @@ public record RunRecord(
         committedAt,
         RunStatus.SUPERSEDED,
         newerRunId,
-        policyStatus);
+        policyStatus,
+        receivedAt,
+        historyDepth);
   }
 }

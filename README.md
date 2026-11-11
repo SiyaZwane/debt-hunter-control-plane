@@ -11,7 +11,7 @@ surfaces portfolio dashboards.
 > each finding's lifecycle, with durable storage on PostgreSQL. See the [Roadmap](#roadmap), the
 > [ingestion API](docs/ingestion-api.md), [normalisation](docs/normalisation.md),
 > [pseudonymisation](docs/pseudonymisation.md), [lifecycle](docs/lifecycle.md), and the
-> [system of record](docs/system-of-record.md), [running the control plane](docs/running.md), the [administration API](docs/admin-api.md), and [trend analytics](docs/analytics.md).
+> [system of record](docs/system-of-record.md), [running the control plane](docs/running.md), the [administration API](docs/admin-api.md), [trend analytics](docs/analytics.md), and [coverage tracking](docs/coverage.md).
 
 ## The one constraint that overrides everything else
 
@@ -115,7 +115,7 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | App wiring | Database, registry, pipeline, queue listener and housekeeping assembled in `control-plane-app` | Done ([details](docs/running.md)) |
 | Admin API | Onboard repositories and grant pipelines over HTTP, role-protected and audited | Done ([details](docs/admin-api.md)) |
 | CP-FR-06 | Materialised read models, trend analytics, architecture drift, remediation effectiveness | Done ([details](docs/analytics.md)) |
-| CP-FR-07 | Coverage and adoption tracking | Next |
+| CP-FR-07 | Coverage and adoption tracking: silent, never-onboarded, degraded, drifted | Done ([details](docs/coverage.md)) |
 | CP-FR-08 – 10 | Policy authoring, signing and publication, rollout stages | Planned |
 | CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
 | CP-FR-13 – 16 | Work items, notifications, serve layer | Planned |
@@ -231,3 +231,16 @@ step, rather than waiting for the final release-gate test.
 - **No HTTP API yet**: the engines are library code until the serve layer (CP-FR-15/16).
 - **Pull-request, late and superseded runs are not projected.**
 - Trends inherit the missing commit-graph source: commit dates fall back to run timestamps.
+
+## Decisions and known gaps from CP-FR-07
+
+- **Only `REPORTING` is healthy.** A repository nobody onboarded, or one that has gone quiet, is never
+  counted as clean.
+- **Precedence is `SILENT` > `DEGRADED_REPORTING` > `VERSION_DRIFT` > `REPORTING`**, an interpretation:
+  the prompt says "one of five states" without ordering them. The reasons list names every condition.
+- **A failed estate listing is reported as unavailable, never as an empty estate.**
+- **"Consistently degraded" needs a full window of runs** (default 3), so a brand-new repository is
+  not flagged until it has that many.
+- **The GitHub and Azure DevOps providers have only been tested against fakes** of their APIs.
+- **No HTTP API and no state history yet**; only the latest report is kept.
+- The run store now records when each run was **received** and its **history depth** (migration V5).
