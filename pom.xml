@@ -17,6 +17,7 @@
   </description>
 
   <modules>
+    <module>control-plane-testkit</module>
     <module>control-plane-store</module>
     <module>control-plane-ingest</module>
     <module>control-plane-analytics</module>
@@ -42,6 +43,8 @@
     <debt-hunter.version>0.1.0-SNAPSHOT</debt-hunter.version>
 
     <spotbugs-annotations.version>4.8.6</spotbugs-annotations.version>
+    <!-- Not managed by the Spring Boot BOM. -->
+    <json-schema-validator.version>1.5.9</json-schema-validator.version>
 
     <!-- Plugin versions (kept in step with the debt-hunter data-plane repository) -->
     <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
@@ -52,6 +55,7 @@
     <spotless-maven-plugin.version>2.44.0</spotless-maven-plugin.version>
     <spotbugs-maven-plugin.version>4.8.6.5</spotbugs-maven-plugin.version>
     <maven-enforcer-plugin.version>3.5.0</maven-enforcer-plugin.version>
+    <maven-dependency-plugin.version>3.9.0</maven-dependency-plugin.version>
 
     <jacoco.line.coverage.minimum>0.80</jacoco.line.coverage.minimum>
 
@@ -78,6 +82,12 @@
         <version>${spotbugs-annotations.version}</version>
       </dependency>
 
+      <dependency>
+        <groupId>com.networknt</groupId>
+        <artifactId>json-schema-validator</artifactId>
+        <version>${json-schema-validator.version}</version>
+      </dependency>
+
       <!-- Data plane -->
       <dependency>
         <groupId>com.debthunter</groupId>
@@ -86,6 +96,11 @@
       </dependency>
 
       <!-- Control-plane modules -->
+      <dependency>
+        <groupId>com.debthunter.controlplane</groupId>
+        <artifactId>control-plane-testkit</artifactId>
+        <version>${project.version}</version>
+      </dependency>
       <dependency>
         <groupId>com.debthunter.controlplane</groupId>
         <artifactId>control-plane-store</artifactId>
@@ -326,6 +341,11 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-enforcer-plugin</artifactId>
           <version>${maven-enforcer-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-dependency-plugin</artifactId>
+          <version>${maven-dependency-plugin.version}</version>
         </plugin>
       </plugins>
     </pluginManagement>

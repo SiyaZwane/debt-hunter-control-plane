@@ -1,0 +1,26 @@
+{
+  "findings": [],
+  "metrics": {},
+  "policy": {
+    "bundleVersion": "1.0",
+    "reasons": [],
+    "status": "PASSED"
+  },
+  "run": {
+    "baseCommit": null,
+    "baselineProvenance": "NONE",
+    "branch": "main",
+    "commit": "5e1781e80d80082de62673928074d2853a530567",
+    "degraded": false,
+    "engines": [],
+    "historyDepth": "FULL",
+    "id": "b1d65e69-8cc8-4f4a-bd5d-3f18f29517a1",
+    "imageDigest": null,
+    "project": null,
+    "pullRequest": null,
+    "repository": "/work/acme/widgets",
+    "timestamp": "2026-11-10T12:27:41.097826Z",
+    "toolVersion": "0.1.0-SNAPSHOT"
+  },
+  "schemaVersion": "1.0"
+}
