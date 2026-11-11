@@ -6,6 +6,7 @@ import static org.awaitility.Awaitility.await;
 import com.debthunter.controlplane.ingest.intake.IntakeEnvelopes;
 import com.debthunter.controlplane.ingest.intake.KafkaIntakeListener;
 import com.debthunter.controlplane.ingest.intake.KafkaRunIntakeQueuePublisher;
+import com.debthunter.controlplane.ingest.receive.Handlers;
 import com.debthunter.controlplane.ingest.receive.InMemoryRunBundleDeduplicator;
 import com.debthunter.controlplane.ingest.receive.RunBundleReceiver;
 import com.debthunter.controlplane.testkit.KafkaTestBroker;
@@ -31,7 +32,8 @@ class CpBc02_DuplicateBundleDeduplicatedTest {
     List<String> processed = new CopyOnWriteArrayList<>();
     RunBundleReceiver receiver =
         new RunBundleReceiver(
-            new InMemoryRunBundleDeduplicator(100), envelope -> processed.add(envelope.runId()));
+            new InMemoryRunBundleDeduplicator(100),
+            Handlers.processing(envelope -> processed.add(envelope.runId())));
 
     try (KafkaRunIntakeQueuePublisher publisher =
             KafkaRunIntakeQueuePublisher.connect(bootstrap, topic, Duration.ofSeconds(10));

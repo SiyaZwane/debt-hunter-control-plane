@@ -5,12 +5,12 @@ The optional, asynchronous management and analytics control plane for
 CI/CD pipelines, maintains governance state, drives trend analytics, manages policy lifecycle, and
 surfaces portfolio dashboards.
 
-> **Status: ingestion pipeline built through pseudonymisation (CP-M0, CP-FR-01 – 03).** A pipeline
-> can publish a run bundle and receive `202`; the bundle is authenticated, scope-checked,
-> schema-validated, queued, normalised across schema versions, and stripped of contributor identity
-> before it can reach a store. See the [Roadmap](#roadmap), the
-> [ingestion API reference](docs/ingestion-api.md), [run normalisation](docs/normalisation.md), and
-> [pseudonymisation](docs/pseudonymisation.md).
+> **Status: ingestion pipeline complete (CP-M0, CP-FR-01 – 04).** A pipeline can publish a run
+> bundle and receive `202`; the bundle is authenticated, scope-checked, schema-validated, queued,
+> normalised across schema versions, stripped of contributor identity, de-duplicated, and applied to
+> each finding's lifecycle. See the [Roadmap](#roadmap), the
+> [ingestion API](docs/ingestion-api.md), [normalisation](docs/normalisation.md),
+> [pseudonymisation](docs/pseudonymisation.md), and [lifecycle](docs/lifecycle.md).
 
 ## The one constraint that overrides everything else
 
@@ -109,8 +109,8 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-01 | Ingestion API: validate, scope-check, enqueue, return `202` | Done |
 | CP-FR-02 | Schema normalisation across the current and N-1 versions | Done |
 | CP-FR-03 | Contributor identity pseudonymised at ingest, audited re-identification | Done, with gaps ([details](docs/pseudonymisation.md#not-done-yet)) |
-| CP-FR-04 | Idempotency and finding lifecycle | Next |
-| CP-FR-05 – 07 | System of record, analytics, coverage tracking | Planned |
+| CP-FR-04 | Idempotency guard and finding lifecycle state machine | Done, with gaps ([details](docs/lifecycle.md#not-done--assumptions)) |
+| CP-FR-05 – 07 | System of record, analytics, coverage tracking | Next: CP-FR-05 |
 | CP-FR-08 – 10 | Policy authoring, signing and publication, rollout stages | Planned |
 | CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
 | CP-FR-13 – 16 | Work items, notifications, serve layer | Planned |
@@ -143,9 +143,7 @@ step, rather than waiting for the final release-gate test.
 - **The N-1 bridge is provisional**, as is the v0 schema it reads.
 - **`confidence` defaults to `1.0`** for a bundle that does not state it. See
   [Defaults](docs/normalisation.md#defaults).
-- **A quarantined bundle spends its `run.id`**: a corrected resubmission under the same id would be
-  discarded as a duplicate until CP-FR-04's idempotency guard. See
-  [the known gap](docs/normalisation.md#known-gap-a-quarantined-run-id-is-spent).
+- ~~A quarantined bundle spends its `run.id`~~ — fixed in CP-FR-04.
 - **The queue listener is still not started by the application.** Normalised bundles carry raw
   contributor identity, so nothing may consume the queue until the pseudonymiser (CP-FR-03) and a
   store exist to receive them.
@@ -162,3 +160,18 @@ step, rather than waiting for the final release-gate test.
 - **`CpAc09` lives in `control-plane-ingest`, not `-store`** as the prompt places it: it drives the
   whole pipeline, and `store` cannot depend on `ingest`.
 - See [pseudonymisation](docs/pseudonymisation.md#not-done-yet) for the rest.
+
+## Decisions and known gaps from CP-FR-04
+
+- **Pull-request runs move no lifecycle state.** CP-BC-09 is not specified in the prompt; this is the
+  conservative reading. See [lifecycle](docs/lifecycle.md#pull-request-runs-cp-bc-09).
+- **A late run is recorded but not replayed**, so history can be thinner than in-order arrival would
+  give, while current state stays correct.
+- **No commit-graph source exists**, so today every commit relation is `UNKNOWN` and runs apply in
+  arrival order. The data plane's bundle carries neither parents nor commit date.
+- **The bundle has no explicit scope field**; "scope-limited" is inferred from `baseCommit` /
+  `pullRequest`.
+- **Stores are in-memory** until CP-FR-05.
+- `CpBc11` lives in `control-plane-ingest`, not `-store`.
+- The suppression-expiry arrow in the spec's diagram points to `RESOLVED`; CP-AC-20 says `OPEN`, so the
+  criterion was followed.

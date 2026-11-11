@@ -98,9 +98,8 @@ application still does not start the queue listener. The sink would be the pseud
 followed by the store (CP-FR-05); starting a consumer before then would either drop bundles or write
 raw contributor identity. Accepted bundles keep waiting safely on the topic.
 
-## Known gap: a quarantined run id is spent
+## A quarantined bundle does not spend its run id
 
-`RunBundleReceiver` marks a run processed once the handler returns normally, and quarantining returns
-normally. A corrected bundle resubmitted under the **same `run.id`** would therefore be discarded as
-a duplicate. Fixing it properly needs the idempotency guard (CP-FR-04) to distinguish "processed"
-from "set aside".
+`RunBundleHandler` reports a `Disposition`. A quarantined bundle is `SET_ASIDE`, and the receiver
+does **not** mark it processed, so a corrected bundle resubmitted under the same `run.id` is
+processed rather than discarded as a duplicate.

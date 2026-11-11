@@ -7,6 +7,7 @@ import com.debthunter.controlplane.ingest.intake.IntakeEnvelope;
 import com.debthunter.controlplane.ingest.intake.IntakeEnvelopes;
 import com.debthunter.controlplane.ingest.intake.KafkaIntakeListener;
 import com.debthunter.controlplane.ingest.intake.KafkaRunIntakeQueuePublisher;
+import com.debthunter.controlplane.ingest.receive.Handlers;
 import com.debthunter.controlplane.ingest.receive.InMemoryRunBundleDeduplicator;
 import com.debthunter.controlplane.ingest.receive.RunBundleHandler;
 import com.debthunter.controlplane.ingest.receive.RunBundleReceiver;
@@ -38,7 +39,8 @@ class KafkaIntakeRoundTripTest {
     String topic = KafkaTopics.create(bootstrap);
     List<IntakeEnvelope> handled = new CopyOnWriteArrayList<>();
     RunBundleReceiver receiver =
-        new RunBundleReceiver(new InMemoryRunBundleDeduplicator(100), handled::add);
+        new RunBundleReceiver(
+            new InMemoryRunBundleDeduplicator(100), Handlers.processing(handled::add));
 
     try (KafkaRunIntakeQueuePublisher publisher =
             KafkaRunIntakeQueuePublisher.connect(bootstrap, topic, PUBLISH_WAIT);
@@ -68,6 +70,7 @@ class KafkaIntakeRoundTripTest {
             throw new IllegalStateException("transient downstream failure");
           }
           succeeded.add(envelope.runId());
+          return RunBundleHandler.Disposition.PROCESSED;
         };
     RunBundleReceiver receiver =
         new RunBundleReceiver(new InMemoryRunBundleDeduplicator(100), flaky);
@@ -100,7 +103,8 @@ class KafkaIntakeRoundTripTest {
     List<String> handled = new CopyOnWriteArrayList<>();
     RunBundleReceiver receiver =
         new RunBundleReceiver(
-            new InMemoryRunBundleDeduplicator(100), envelope -> handled.add(envelope.runId()));
+            new InMemoryRunBundleDeduplicator(100),
+            Handlers.processing(envelope -> handled.add(envelope.runId())));
 
     Properties raw = new Properties();
     raw.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrap);
