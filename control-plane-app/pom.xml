@@ -60,6 +60,10 @@
             <id>enforce-boot-only-in-app</id>
             <phase>none</phase>
           </execution>
+          <execution>
+            <id>enforce-no-ai-on-pipeline-path</id>
+            <phase>none</phase>
+          </execution>
         </executions>
       </plugin>
       <plugin>
