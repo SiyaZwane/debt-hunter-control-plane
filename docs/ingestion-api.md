@@ -127,9 +127,11 @@ stay in order on one partition. Delivery is at-least-once, so duplicates are nor
   backoff rather than skipping it. A record that can never be decoded is logged and skipped, since
   it could never succeed and would otherwise block its partition forever.
 
-The listener and receiver are built and tested but **not yet started by the application**: there is
-no downstream stage to hand bundles to until normalisation (CP-FR-02), and starting a consumer with
-nowhere to put what it reads would silently drop data. Accepted bundles wait safely on the topic.
+The listener and receiver are built and tested but **not yet started by the application**. Bundles
+are [normalised](normalisation.md) after the queue, but the stage after that is the pseudonymiser
+(CP-FR-03) and a store, and a normalised bundle still carries raw contributor identity — so starting
+a consumer now would either drop bundles or persist that identity. Accepted bundles wait safely on
+the topic.
 
 ## Configuration
 

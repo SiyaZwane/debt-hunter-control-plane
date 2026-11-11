@@ -5,10 +5,11 @@ The optional, asynchronous management and analytics control plane for
 CI/CD pipelines, maintains governance state, drives trend analytics, manages policy lifecycle, and
 surfaces portfolio dashboards.
 
-> **Status: ingestion edge built (CP-M0, CP-FR-01).** A pipeline can publish a run bundle and
-> receive `202`; the bundle is authenticated, scope-checked, schema-validated, and queued. Nothing
-> downstream of the queue exists yet — see the [Roadmap](#roadmap) and the
-> [ingestion API reference](docs/ingestion-api.md).
+> **Status: ingestion edge and normalisation built (CP-M0, CP-FR-01, CP-FR-02).** A pipeline can
+> publish a run bundle and receive `202`; the bundle is authenticated, scope-checked,
+> schema-validated, queued, and can be normalised across schema versions. Nothing downstream of
+> normalisation exists yet — see the [Roadmap](#roadmap), the
+> [ingestion API reference](docs/ingestion-api.md), and [run normalisation](docs/normalisation.md).
 
 ## The one constraint that overrides everything else
 
@@ -105,7 +106,8 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 |---|---|---|
 | CP-M0 | Module structure, build, quality gates, Spring Boot entry point | Done |
 | CP-FR-01 | Ingestion API: validate, scope-check, enqueue, return `202` | Done |
-| CP-FR-02 – 04 | Schema normalisation, pseudonymisation, idempotency and finding lifecycle | Next: CP-FR-02 |
+| CP-FR-02 | Schema normalisation across the current and N-1 versions | Done |
+| CP-FR-03 – 04 | Pseudonymisation, idempotency and finding lifecycle | Next: CP-FR-03 |
 | CP-FR-05 – 07 | System of record, analytics, coverage tracking | Planned |
 | CP-FR-08 – 10 | Policy authoring, signing and publication, rollout stages | Planned |
 | CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
@@ -133,3 +135,15 @@ step, rather than waiting for the final release-gate test.
   interface would be a dependency cycle.
 - **The queue listener is built and tested but not started by the application** until there is a
   downstream stage (CP-FR-02) to hand bundles to.
+
+## Decisions and known gaps from CP-FR-02
+
+- **The N-1 bridge is provisional**, as is the v0 schema it reads.
+- **`confidence` defaults to `1.0`** for a bundle that does not state it. See
+  [Defaults](docs/normalisation.md#defaults).
+- **A quarantined bundle spends its `run.id`**: a corrected resubmission under the same id would be
+  discarded as a duplicate until CP-FR-04's idempotency guard. See
+  [the known gap](docs/normalisation.md#known-gap-a-quarantined-run-id-is-spent).
+- **The queue listener is still not started by the application.** Normalised bundles carry raw
+  contributor identity, so nothing may consume the queue until the pseudonymiser (CP-FR-03) and a
+  store exist to receive them.
