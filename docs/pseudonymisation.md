@@ -80,5 +80,5 @@ second log line. `LoggingReIdentificationAuditLog` writes to the dedicated logge
   query API registers.
 - **Free text is not scanned.** `message` and `path` are carried as-is; they are engine-generated,
   but nothing here would catch a path like `/home/jdoe/...`.
-- The queue listener is **still not started** by the application: there is no production
-  `PseudonymDirectory` or durable finding store to point it at.
+- The pseudonym directory is **in memory in the running application** (lost on restart), and the key
+  comes from configuration rather than Key Vault. See [running](running.md#known-limits-of-the-wiring).

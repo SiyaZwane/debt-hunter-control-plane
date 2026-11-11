@@ -104,9 +104,8 @@ one that merges is picked up by the next full run.
   the commit date falling back to the run's own timestamp.
 - **The bundle has no scope field.** "Scope-limited" is inferred from `baseCommit`/`pullRequest`.
   The data plane should state its analysis mode explicitly.
-- **Stores are in-memory.** The repositories are interfaces with in-memory implementations; durable
-  ones arrive with the system of record (CP-FR-05). Atomicity across the log, states and run store is
-  achieved by ordering and idempotency, not a transaction.
+- **Atomicity across the log, states and run store** is achieved by ordering and idempotency, not a
+  transaction. The stores are now durable (PostgreSQL) in the running application.
 - **The suppression register is read-only here** (`SuppressionLookup`); creating and approving
   suppressions is CP-FR-05.
 - **One bundle at a time per repository** is assumed, which the intake queue provides by keying on

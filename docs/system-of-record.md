@@ -85,14 +85,12 @@ pseudonymiser, which is a decision for the data-protection owner.
 
 ## Not done / assumptions
 
-- **The application does not use any of this yet.** `control-plane-app` still builds its scope lookup
-  from configuration and starts no queue listener. Wiring needs a `DataSource` bean, running
-  `StoreMigrations.migrate`, and starting the listener, which is deliberately a separate step.
+- **The application now uses all of this** (see [running](running.md)), except the pseudonym
+  directory, which is still in memory.
 - **No real Azure SQL.** PostgreSQL only.
 - **One writer per repository is assumed**, as in CP-FR-04. Atomicity across the log, state and run
   store is by write order and idempotency, not one transaction.
-- **No retention job calls `EvidenceStorageService.expire`** yet (that arrives with the cross-cutting
-  controls), and nothing yet writes evidence from the pipeline.
-- **Connection pooling is not in this module**; the application's `DataSource` should pool.
+- **Housekeeping calls `EvidenceStorageService.expire` hourly**, and the pipeline now stores evidence.
+- **Connection pooling is not in this module**; the application supplies a pooled `DataSource`.
 - `CpAc24` and `CpAc25` are in `control-plane-store` as the prompt places them. `CpAc26` is too, using
   the durable register.

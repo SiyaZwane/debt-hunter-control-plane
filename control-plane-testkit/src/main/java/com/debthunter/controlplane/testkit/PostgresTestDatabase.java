@@ -22,6 +22,25 @@ public final class PostgresTestDatabase {
 
   private PostgresTestDatabase() {}
 
+  /** How to connect to a test schema, for configuring an application under test. */
+  public record Connection(String jdbcUrl, String username, String password) {}
+
+  /**
+   * Connection details for a new, empty schema of the shared server.
+   *
+   * @return the URL (already defaulting to that schema), user, and password
+   */
+  public static synchronized Connection freshSchemaConnection() {
+    DataSource dataSource = freshSchema();
+    PGSimpleDataSource pg = (PGSimpleDataSource) dataSource;
+    // getUrl() omits the schema, so put it back: the application must land in the same schema.
+    String separator = pg.getUrl().contains("?") ? "&" : "?";
+    return new Connection(
+        pg.getUrl() + separator + "currentSchema=" + pg.getCurrentSchema(),
+        pg.getUser(),
+        pg.getPassword());
+  }
+
   /**
    * A data source on a new, empty schema of the shared server.
    *
@@ -35,7 +54,7 @@ public final class PostgresTestDatabase {
       container = started;
     }
     String schema = "t_" + UUID.randomUUID().toString().replace("-", "");
-    try (Connection connection = open(container, null);
+    try (java.sql.Connection connection = open(container, null);
         Statement statement = connection.createStatement()) {
       statement.execute("CREATE SCHEMA " + schema);
     } catch (SQLException e) {
@@ -49,7 +68,8 @@ public final class PostgresTestDatabase {
     return dataSource;
   }
 
-  private static Connection open(PostgreSQLContainer<?> db, String schema) throws SQLException {
+  private static java.sql.Connection open(PostgreSQLContainer<?> db, String schema)
+      throws SQLException {
     PGSimpleDataSource dataSource = new PGSimpleDataSource();
     dataSource.setUrl(db.getJdbcUrl());
     dataSource.setUser(db.getUsername());

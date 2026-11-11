@@ -127,11 +127,10 @@ stay in order on one partition. Delivery is at-least-once, so duplicates are nor
   backoff rather than skipping it. A record that can never be decoded is logged and skipped, since
   it could never succeed and would otherwise block its partition forever.
 
-The listener and receiver are built and tested but **not yet started by the application**. Bundles
-are [normalised](normalisation.md) after the queue, but the stage after that is the pseudonymiser
-(CP-FR-03) and a store, and a normalised bundle still carries raw contributor identity — so starting
-a consumer now would either drop bundles or persist that identity. Accepted bundles wait safely on
-the topic.
+The application consumes the queue in the same process, and runs each bundle through the
+[normaliser](normalisation.md), the [pseudonymiser](pseudonymisation.md), and the
+[lifecycle](lifecycle.md) into the [system of record](system-of-record.md). See
+[running the control plane](running.md) for how it is assembled.
 
 ## Configuration
 
@@ -147,7 +146,9 @@ the topic.
 | `debthunter.controlplane.rate-limit.window` | — | `PT1M` | |
 | `debthunter.controlplane.ingest.schema.current-major` | — | `1` | Newest accepted schema major |
 | `debthunter.controlplane.ingest.max-bundle-bytes` | — | `10485760` | Largest accepted bundle |
-| `debthunter.controlplane.workload-scopes.<identity>[n]` | — | none | Repositories each identity may publish for |
 
 The three security settings are mandatory: the application refuses to start without them rather than
-run unauthenticated. `workload-scopes` is a stand-in for the repository registry until that exists.
+run unauthenticated. Which workload may publish for which repository is no longer configuration: it
+is decided by the repository registry (a repository must be onboarded and the workload granted it).
+The full configuration, including the database and pseudonymisation key, is in
+[running the control plane](running.md#configuration).
