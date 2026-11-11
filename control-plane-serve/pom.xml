@@ -27,6 +27,10 @@
     </dependency>
     <dependency>
       <groupId>com.debthunter.controlplane</groupId>
+      <artifactId>control-plane-ai</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.debthunter.controlplane</groupId>
       <artifactId>control-plane-testkit</artifactId>
       <scope>test</scope>
     </dependency>
@@ -36,4 +40,20 @@
       <scope>test</scope>
     </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <!-- This is one of the two modules allowed to use control-plane-ai. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>enforce-no-ai-on-pipeline-path</id>
+            <phase>none</phase>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
 </project>

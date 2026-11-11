@@ -460,6 +460,27 @@
               <fail>true</fail>
             </configuration>
           </execution>
+          <!-- Global rule: no model on the pipeline path. Only the serve layer and the application may
+               depend on control-plane-ai; ingestion, storage, analytics, governance and the HTTP
+               ingestion API may not, so nothing a pipeline waits on can reach a model. -->
+          <execution>
+            <id>enforce-no-ai-on-pipeline-path</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>com.debthunter.controlplane:control-plane-ai</exclude>
+                  </excludes>
+                  <message>control-plane-ai may only be used by control-plane-serve and control-plane-app.</message>
+                </bannedDependencies>
+              </rules>
+              <fail>true</fail>
+            </configuration>
+          </execution>
         </executions>
       </plugin>
     </plugins>

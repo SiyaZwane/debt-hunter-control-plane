@@ -119,7 +119,8 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-08 | Policy authoring, validation and read-only impact simulation | Done ([details](docs/policy-simulation.md)) |
 | CP-FR-09 | Policy signing and publication | Done ([details](docs/policy-publication.md)) |
 | CP-FR-10 | Rollout stage management | Done ([details](docs/rollout-stages.md)) |
-| CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
+| CP-FR-11 | AI explanation with the prompt guard (rule templates now, model later) | Done ([details](docs/ai-explanation.md)) |
+| CP-FR-12 | AI remediation proposals | Planned |
 | CP-FR-13 – 16 | Work items, notifications, serve layer | Planned |
 | Cross-cutting | Workload-identity scoping, retention tiering, failure isolation | Planned |
 | Release gate | Offline conformance test — the whole control plane down, pipeline still delivers | Planned |
@@ -331,3 +332,43 @@ step, rather than waiting for the final release-gate test.
   adoption endpoint yet.
 - **Coverage reads all stages in one query per reconciliation** and, if that fails, the report says so
   in its warnings and shows no stages instead of failing.
+
+## Decisions and known gaps from CP-FR-11
+
+- **No model is wired. Explanations come from rule templates.** This follows the decision to avoid
+  pay-per-use for now. `RuleBasedExplainer` fills a template from the finding's own message, severity
+  and retained evidence. The model path (`ModelExplainer` behind `PromptGuard`) is fully built and
+  tested against a fake model, but nothing in the running application dispatches to a model. Turning
+  one on means adding it to the explainer chain.
+- **Template text is labelled `modelGenerated: false`.** The spec says all generated text carries
+  `true`; claiming model authorship for a template would be false. Only model output carries `true`,
+  and which it is cannot disagree with the recorded source.
+- **A model that is down falls through to the template** (so a finding always has an explanation), where
+  the spec says to omit it. If nothing at all can explain, the answer is empty with no placeholder.
+- **Source-bearing text never crosses repositories.** An explanation written from a prompt that
+  contained source is not cached, and a request waiting on another repository's in-flight call is not
+  handed its source-informed answer. The cache key also includes the model and prompt version
+  (a small addition to the spec's fingerprint-and-rule key), so a new model does not reuse old text.
+- **The guard is a boundary by construction.** Only `PromptGuard` can make a `GuardedPrompt`, only it
+  calls `ModelClient`, and the build checks both (ArchUnit). The prompt is built from an allow-list of
+  fields, so contributors, fingerprints and scores have no path into it. Source is fetched only after a
+  definite opt-in; an unreadable opt-in means restrictive. The dispatch is logged before it is made and
+  not made if it cannot be logged.
+- **`control-plane-ai` is kept off the pipeline path by the build.** A Maven enforcer rule bans it from
+  every module except `control-plane-serve` and `control-plane-app`.
+- **Deferred to when a model is turned on:** the Redis cache (an in-memory cache exists, so CP-AC-55
+  is tested in memory, not against Redis), the real model client, the durable dispatch-log table, the
+  store-backed opt-in (the opt-in lookup and source provider are ports with test fakes only), and a
+  call budget. CP-AC-53 to 55 are tagged integration but use in-process collaborators.
+- **Templates are only as good as the catalogue.** The data plane's rule ids are `codemaat.*`,
+  `architecture.<rule>` and `sonar.<rule>`; the last two are described by family. The control plane
+  retains only a few evidence keys (`changeFrequency`, `complexityDelta`, `calculation`, `engine`,
+  `import`, `rule`, `originalCategory`), so templates lean on the finding's own message.
+- **`FindingDetailService` (serve) is a small slice of CP-FR-15** pulled forward so CP-AC-57 has
+  something real to test. It has no HTTP endpoint and no caller authorisation: the layer above must
+  decide who may see a repository.
+- **Not wired into the app:** no beans, no endpoint.
+- **I removed two unused dependencies from `control-plane-api`** (`control-plane-serve` and
+  `control-plane-ai`), because the new enforcer rule showed they would have put the model code on the
+  ingestion API's classpath. Nothing imported them. When CP-FR-15 adds read endpoints, decide whether
+  they live in `api` (then relax the rule for it) or a separate module.
