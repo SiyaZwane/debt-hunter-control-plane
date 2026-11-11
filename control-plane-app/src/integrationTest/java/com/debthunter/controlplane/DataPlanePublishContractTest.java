@@ -4,6 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.debthunter.controlplane.ingest.intake.IntakeEnvelope;
 import com.debthunter.controlplane.ingest.intake.RunIntakeQueuePublisher;
+import com.debthunter.controlplane.store.registry.OnboardedRepository;
+import com.debthunter.controlplane.store.registry.RepositoryRegistryService;
+import com.debthunter.controlplane.store.registry.WorkItemRoute;
+import com.debthunter.controlplane.testkit.PostgresTestDatabase;
 import com.debthunter.controlplane.testkit.TestJwtIssuer;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,8 +19,10 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -46,6 +52,8 @@ class DataPlanePublishContractTest {
 
   @LocalServerPort private int port;
 
+  @Autowired private RepositoryRegistryService registry;
+
   @DynamicPropertySource
   static void configure(DynamicPropertyRegistry registry) {
     registry.add(
@@ -53,9 +61,24 @@ class DataPlanePublishContractTest {
     registry.add("debthunter.controlplane.security.issuer", () -> TestJwtIssuer.ISSUER);
     registry.add("debthunter.controlplane.security.audience", () -> TestJwtIssuer.AUDIENCE);
     registry.add("debthunter.controlplane.intake.bootstrap-servers", () -> "127.0.0.1:1");
+    registry.add("debthunter.controlplane.intake.listener-enabled", () -> "false");
+    PostgresTestDatabase.Connection db = PostgresTestDatabase.freshSchemaConnection();
+    registry.add("debthunter.controlplane.database.url", db::jdbcUrl);
+    registry.add("debthunter.controlplane.database.username", db::username);
+    registry.add("debthunter.controlplane.database.password", db::password);
+    registry.add("debthunter.controlplane.pseudonym.key", () -> AppProperties.PSEUDONYM_KEY);
+  }
+
+  @BeforeEach
+  void onboardTheRepositoryAndGrantThePipeline() {
     // Today's data plane declares the repository's local path as the repository identity.
-    registry.add(
-        "debthunter.controlplane.workload-scopes." + PIPELINE + "[0]", REPOSITORY::toString);
+    String repository = REPOSITORY.toString();
+    if (!registry.isOnboarded(repository)) {
+      registry.onboard(
+          new OnboardedRepository(
+              repository, "team-a", "tier-1", "1.0", "enforce", new WorkItemRoute("jira", "WID")));
+      registry.grantWorkload(PIPELINE, repository);
+    }
   }
 
   @TestConfiguration

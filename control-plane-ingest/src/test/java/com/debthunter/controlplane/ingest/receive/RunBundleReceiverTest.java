@@ -16,7 +16,8 @@ class RunBundleReceiverTest {
 
   @Test
   void aNewBundleIsDispatchedToTheHandler() {
-    RunBundleReceiver receiver = new RunBundleReceiver(deduplicator, handled::add);
+    RunBundleReceiver receiver =
+        new RunBundleReceiver(deduplicator, Handlers.processing(handled::add));
     IntakeEnvelope envelope = IntakeEnvelopes.forRun("run-1");
 
     RunBundleReceiver.Outcome outcome = receiver.receive(envelope);
@@ -27,7 +28,8 @@ class RunBundleReceiverTest {
 
   @Test
   void aRedeliveredBundleIsDiscardedWithoutReprocessing() {
-    RunBundleReceiver receiver = new RunBundleReceiver(deduplicator, handled::add);
+    RunBundleReceiver receiver =
+        new RunBundleReceiver(deduplicator, Handlers.processing(handled::add));
 
     receiver.receive(IntakeEnvelopes.forRun("run-1"));
     RunBundleReceiver.Outcome second = receiver.receive(IntakeEnvelopes.forRun("run-1"));
@@ -47,6 +49,7 @@ class RunBundleReceiverTest {
                 throw new IllegalStateException("downstream unavailable");
               }
               handled.add(envelope);
+              return RunBundleHandler.Disposition.PROCESSED;
             });
     IntakeEnvelope envelope = IntakeEnvelopes.forRun("run-1");
 
@@ -60,11 +63,31 @@ class RunBundleReceiverTest {
 
   @Test
   void differentRunsAreProcessedIndependently() {
-    RunBundleReceiver receiver = new RunBundleReceiver(deduplicator, handled::add);
+    RunBundleReceiver receiver =
+        new RunBundleReceiver(deduplicator, Handlers.processing(handled::add));
 
     receiver.receive(IntakeEnvelopes.forRun("run-1"));
     receiver.receive(IntakeEnvelopes.forRun("run-2"));
 
     assertThat(handled).extracting(IntakeEnvelope::runId).containsExactly("run-1", "run-2");
+  }
+
+  @Test
+  void aBundleSetAsideIsNotMarkedProcessedSoACorrectedOneUnderTheSameRunIdIsNotADuplicate() {
+    boolean[] corrected = {false};
+    RunBundleReceiver receiver =
+        new RunBundleReceiver(
+            deduplicator,
+            envelope ->
+                corrected[0]
+                    ? RunBundleHandler.Disposition.PROCESSED
+                    : RunBundleHandler.Disposition.SET_ASIDE);
+    IntakeEnvelope envelope = IntakeEnvelopes.forRun("run-1");
+
+    assertThat(receiver.receive(envelope)).isEqualTo(RunBundleReceiver.Outcome.SET_ASIDE);
+    assertThat(deduplicator.alreadyProcessed("run-1")).isFalse();
+
+    corrected[0] = true;
+    assertThat(receiver.receive(envelope)).isEqualTo(RunBundleReceiver.Outcome.PROCESSED);
   }
 }

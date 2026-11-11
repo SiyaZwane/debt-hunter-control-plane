@@ -60,12 +60,7 @@ class CpAc05_OfflinePipelineCompletesTest {
       ConfigurableApplicationContext controlPlane =
           new SpringApplicationBuilder(ControlPlaneApplication.class)
               .web(WebApplicationType.REACTIVE)
-              .run(
-                  "--server.port=0",
-                  "--debthunter.controlplane.security.jwk-set-uri=" + issuer.startJwksServer(),
-                  "--debthunter.controlplane.security.issuer=" + TestJwtIssuer.ISSUER,
-                  "--debthunter.controlplane.security.audience=" + TestJwtIssuer.AUDIENCE,
-                  "--debthunter.controlplane.intake.bootstrap-servers=127.0.0.1:1");
+              .run(AppProperties.valid(issuer).args());
       int port = Integer.parseInt(controlPlane.getEnvironment().getProperty("local.server.port"));
       controlPlane.close();
       return port;

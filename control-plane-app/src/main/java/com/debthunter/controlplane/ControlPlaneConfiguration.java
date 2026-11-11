@@ -1,16 +1,16 @@
 package com.debthunter.controlplane;
 
+import com.debthunter.controlplane.api.admin.AdminApiConfiguration;
 import com.debthunter.controlplane.api.ingestion.IngestionApiConfiguration;
 import com.debthunter.controlplane.api.ingestion.RequestRateLimiter;
 import com.debthunter.controlplane.api.ingestion.SlidingWindowRequestRateLimiter;
+import com.debthunter.controlplane.api.security.AdminAccess;
 import com.debthunter.controlplane.api.security.ControlPlaneJwtDecoders;
 import com.debthunter.controlplane.api.security.IngestionSecurityConfiguration;
 import com.debthunter.controlplane.egress.alert.LoggingSecurityAlertPublisher;
 import com.debthunter.controlplane.egress.alert.SecurityAlertPublisher;
 import com.debthunter.controlplane.ingest.intake.KafkaRunIntakeQueuePublisher;
 import com.debthunter.controlplane.ingest.intake.RunIntakeQueuePublisher;
-import com.debthunter.controlplane.store.registry.InMemoryRepositoryScopeLookup;
-import com.debthunter.controlplane.store.registry.RepositoryScopeLookup;
 import java.net.URI;
 import java.time.Clock;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -26,7 +26,14 @@ import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
  */
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(ControlPlaneProperties.class)
-@Import({IngestionApiConfiguration.class, IngestionSecurityConfiguration.class})
+@Import({
+  AdminApiConfiguration.class,
+  AnalyticsConfiguration.class,
+  IngestionApiConfiguration.class,
+  IngestionSecurityConfiguration.class,
+  StoreConfiguration.class,
+  IngestPipelineConfiguration.class
+})
 public class ControlPlaneConfiguration {
 
   /**
@@ -62,14 +69,14 @@ public class ControlPlaneConfiguration {
   }
 
   /**
-   * Which repositories each workload identity may publish for.
+   * Which role in a token grants administration of the control plane.
    *
    * @param properties the control-plane configuration
-   * @return the scope lookup
+   * @return the access rule the security chain enforces on the administration routes
    */
   @Bean
-  public RepositoryScopeLookup repositoryScopeLookup(ControlPlaneProperties properties) {
-    return new InMemoryRepositoryScopeLookup(properties.workloadScopes());
+  public AdminAccess adminAccess(ControlPlaneProperties properties) {
+    return new AdminAccess(properties.security().adminRole());
   }
 
   /**
@@ -106,6 +113,44 @@ public class ControlPlaneConfiguration {
   public RequestRateLimiter requestRateLimiter(ControlPlaneProperties properties, Clock clock) {
     ControlPlaneProperties.RateLimit limit = properties.rateLimit();
     return new SlidingWindowRequestRateLimiter(limit.maxRequests(), limit.window(), clock);
+  }
+
+  /**
+   * Consumes the intake queue and drives bundles through the pipeline. Off when {@code
+   * intake.listener-enabled} is false, to run the ingestion edge alone.
+   *
+   * @param properties the control-plane configuration
+   * @param receiver the head of the pipeline
+   * @return the lifecycle component
+   */
+  @Bean
+  @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+      prefix = "debthunter.controlplane.intake",
+      name = "listener-enabled",
+      havingValue = "true",
+      matchIfMissing = true)
+  IntakeListenerLifecycle intakeListenerLifecycle(
+      ControlPlaneProperties properties,
+      com.debthunter.controlplane.ingest.receive.RunBundleReceiver receiver) {
+    return new IntakeListenerLifecycle(properties.intake(), receiver);
+  }
+
+  /**
+   * The periodic evidence-expiry and suppression-warning sweep.
+   *
+   * @param evidence evidence storage
+   * @param suppressions the suppression register
+   * @param clock the clock
+   * @param properties the control-plane configuration
+   * @return the lifecycle component
+   */
+  @Bean
+  Housekeeping housekeeping(
+      com.debthunter.controlplane.store.evidence.EvidenceStorageService evidence,
+      com.debthunter.controlplane.store.suppressions.SuppressionRegisterService suppressions,
+      Clock clock,
+      ControlPlaneProperties properties) {
+    return new Housekeeping(evidence, suppressions, clock, properties.retention().sweepInterval());
   }
 
   private static boolean isBlank(String value) {

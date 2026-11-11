@@ -11,11 +11,23 @@ import com.debthunter.controlplane.ingest.intake.IntakeEnvelope;
 @FunctionalInterface
 public interface RunBundleHandler {
 
+  /** What became of a bundle the handler returned normally for. */
+  enum Disposition {
+    /** It was processed. */
+    PROCESSED,
+    /**
+     * It can never be processed and has been set aside for a person to look at. It is <em>not</em>
+     * marked as seen, so a corrected bundle under the same run id is not mistaken for a duplicate.
+     */
+    SET_ASIDE
+  }
+
   /**
    * Processes one bundle.
    *
    * @param envelope the bundle to process
+   * @return what became of it
    * @throws RuntimeException if the bundle could not be processed and should be retried
    */
-  void handle(IntakeEnvelope envelope);
+  Disposition handle(IntakeEnvelope envelope);
 }

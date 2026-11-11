@@ -5,10 +5,13 @@ The optional, asynchronous management and analytics control plane for
 CI/CD pipelines, maintains governance state, drives trend analytics, manages policy lifecycle, and
 surfaces portfolio dashboards.
 
-> **Status: ingestion edge built (CP-M0, CP-FR-01).** A pipeline can publish a run bundle and
-> receive `202`; the bundle is authenticated, scope-checked, schema-validated, and queued. Nothing
-> downstream of the queue exists yet — see the [Roadmap](#roadmap) and the
-> [ingestion API reference](docs/ingestion-api.md).
+> **Status: ingestion pipeline and system of record built and wired into a running application (CP-M0, CP-FR-01 – 05).** A pipeline can publish a run
+> bundle and receive `202`; the bundle is authenticated, scope-checked, schema-validated, queued,
+> normalised across schema versions, stripped of contributor identity, de-duplicated, and applied to
+> each finding's lifecycle, with durable storage on PostgreSQL. See the [Roadmap](#roadmap), the
+> [ingestion API](docs/ingestion-api.md), [normalisation](docs/normalisation.md),
+> [pseudonymisation](docs/pseudonymisation.md), [lifecycle](docs/lifecycle.md), and the
+> [system of record](docs/system-of-record.md), [running the control plane](docs/running.md), the [administration API](docs/admin-api.md), and [trend analytics](docs/analytics.md).
 
 ## The one constraint that overrides everything else
 
@@ -105,8 +108,14 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 |---|---|---|
 | CP-M0 | Module structure, build, quality gates, Spring Boot entry point | Done |
 | CP-FR-01 | Ingestion API: validate, scope-check, enqueue, return `202` | Done |
-| CP-FR-02 – 04 | Schema normalisation, pseudonymisation, idempotency and finding lifecycle | Next: CP-FR-02 |
-| CP-FR-05 – 07 | System of record, analytics, coverage tracking | Planned |
+| CP-FR-02 | Schema normalisation across the current and N-1 versions | Done |
+| CP-FR-03 | Contributor identity pseudonymised at ingest, audited re-identification | Done, with gaps ([details](docs/pseudonymisation.md#not-done-yet)) |
+| CP-FR-04 | Idempotency guard and finding lifecycle state machine | Done, with gaps ([details](docs/lifecycle.md#not-done--assumptions)) |
+| CP-FR-05 | System of record: PostgreSQL stores, registry, suppressions, baselines, policy catalogue, evidence | Done |
+| App wiring | Database, registry, pipeline, queue listener and housekeeping assembled in `control-plane-app` | Done ([details](docs/running.md)) |
+| Admin API | Onboard repositories and grant pipelines over HTTP, role-protected and audited | Done ([details](docs/admin-api.md)) |
+| CP-FR-06 | Materialised read models, trend analytics, architecture drift, remediation effectiveness | Done ([details](docs/analytics.md)) |
+| CP-FR-07 | Coverage and adoption tracking | Next |
 | CP-FR-08 – 10 | Policy authoring, signing and publication, rollout stages | Planned |
 | CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
 | CP-FR-13 – 16 | Work items, notifications, serve layer | Planned |
@@ -133,3 +142,92 @@ step, rather than waiting for the final release-gate test.
   interface would be a dependency cycle.
 - **The queue listener is built and tested but not started by the application** until there is a
   downstream stage (CP-FR-02) to hand bundles to.
+
+## Decisions and known gaps from CP-FR-02
+
+- **The N-1 bridge is provisional**, as is the v0 schema it reads.
+- **`confidence` defaults to `1.0`** for a bundle that does not state it. See
+  [Defaults](docs/normalisation.md#defaults).
+- ~~A quarantined bundle spends its `run.id`~~ — fixed in CP-FR-04.
+- **The queue listener is still not started by the application.** Normalised bundles carry raw
+  contributor identity, so nothing may consume the queue until the pseudonymiser (CP-FR-03) and a
+  store exist to receive them.
+
+## Decisions and known gaps from CP-FR-03
+
+- **CP-BC-05 and CP-BC-07 are named, not specified, in the prompt.** Interpreted as: identities
+  that differ only cosmetically (case, whitespace, Unicode form) are one person (05); blank or absent
+  identities are dropped and counted rather than pseudonymised into a shared bucket (07).
+- **Evidence is default-deny**, so a new engine's evidence is withheld until its keys are reviewed.
+- **Key Vault is tested against a fake**; the Azure SDK binding is not written.
+- **CP-AC-11 is deferred** to the serve layer and **CP-AC-12 is a surface guard** until the query API
+  exists.
+- **`CpAc09` lives in `control-plane-ingest`, not `-store`** as the prompt places it: it drives the
+  whole pipeline, and `store` cannot depend on `ingest`.
+- See [pseudonymisation](docs/pseudonymisation.md#not-done-yet) for the rest.
+
+## Decisions and known gaps from CP-FR-04
+
+- **Pull-request runs move no lifecycle state.** CP-BC-09 is not specified in the prompt; this is the
+  conservative reading. See [lifecycle](docs/lifecycle.md#pull-request-runs-cp-bc-09).
+- **A late run is recorded but not replayed**, so history can be thinner than in-order arrival would
+  give, while current state stays correct.
+- **No commit-graph source exists**, so today every commit relation is `UNKNOWN` and runs apply in
+  arrival order. The data plane's bundle carries neither parents nor commit date.
+- **The bundle has no explicit scope field**; "scope-limited" is inferred from `baseCommit` /
+  `pullRequest`.
+- **Stores are in-memory** until CP-FR-05.
+- `CpBc11` lives in `control-plane-ingest`, not `-store`.
+- The suppression-expiry arrow in the spec's diagram points to `RESOLVED`; CP-AC-20 says `OPEN`, so the
+  criterion was followed.
+
+## Decisions and known gaps from CP-FR-05
+
+- **PostgreSQL, plain JDBC, Flyway** rather than Spring Data JPA on Azure SQL, to keep Spring out of
+  the store module. Moving to SQL Server is a port.
+- **The pseudonym directory is still in-memory** and deliberately has no table in this schema.
+- **The suppression warning falls due at the earlier of `max − 7` days and `expiry − 7` days**, so a
+  short suppression is not warned about after it has lapsed. The prompt's formula alone would miss it.
+- **The transition log's append-only rule is enforced by a database trigger**, not only by the code.
+- The lifecycle now reads the real suppression register; `SuppressionLookup` moved to the store module.
+- The ArchUnit rule about the store was restated as "the store cannot depend on ingest", since the
+  JDBC store legitimately uses `javax.sql` and Jackson.
+- `ratifiedBy` on policy bundles is not pseudonymised (an approver is not a contributor).
+
+## Decisions and known gaps from the app wiring
+
+- **The app needs a database, a pseudonymisation key and token config, and refuses to start without
+  any of them.** See [running](docs/running.md).
+- **Repository scope is no longer configuration**: the registry decides, and an administrator manages
+  it through the [administration API](docs/admin-api.md).
+- **The pseudonym key comes from configuration**, not Key Vault, and **the directory is in memory**.
+- **There is no commit-graph source**, so out-of-order protection is inactive in a real deployment.
+- **Quarantine keeps metadata only**: the bundle carries raw identity and stays on the intake topic.
+- **Suppression warnings are only logged**; there is no notification channel yet.
+- **The app's integration tests now need Docker** (Kafka and PostgreSQL).
+- **No Dockerfile or deployment manifest yet.**
+
+## Decisions and known gaps from the administration API
+
+- **Administration is gated by a role in the token** (`ControlPlane.Admin`, configurable), checked by
+  the security chain. A pipeline's token gets 403 on every admin route.
+- **Changes are audited before they are applied, and refused if the audit cannot be written.** The
+  audit trail is a log line, not a durable table.
+- **Input is rejected, not cleaned up** (including padded whitespace).
+- **One role does everything**: onboarding and granting are not separated, and there is no second
+  approver.
+- **Only the registry has admin routes**; policy, suppressions and baselines do not yet.
+- **Repository identifiers may contain slashes in the URL**, but a leading slash (today's local-path
+  identifiers) is awkward.
+
+## Decisions and known gaps from CP-FR-06
+
+- **The projector only reads the live stores**, enforced by an ArchUnit rule, and it is isolated in
+  the running app: a failing, hung or stopped projector leaves ingest untouched (CP-AC-32).
+- **Batches commit atomically with their checkpoint**, and the projector refuses to continue if a
+  checkpoint did not advance, rather than double-counting.
+- **"Architecture drift duration" is an interpretation**; the prompt does not define it.
+- **Policy pressure needed the run's policy outcome**, now stored on the run (migration V3).
+- **No HTTP API yet**: the engines are library code until the serve layer (CP-FR-15/16).
+- **Pull-request, late and superseded runs are not projected.**
+- Trends inherit the missing commit-graph source: commit dates fall back to run timestamps.
