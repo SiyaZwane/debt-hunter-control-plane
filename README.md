@@ -5,11 +5,12 @@ The optional, asynchronous management and analytics control plane for
 CI/CD pipelines, maintains governance state, drives trend analytics, manages policy lifecycle, and
 surfaces portfolio dashboards.
 
-> **Status: ingestion edge and normalisation built (CP-M0, CP-FR-01, CP-FR-02).** A pipeline can
-> publish a run bundle and receive `202`; the bundle is authenticated, scope-checked,
-> schema-validated, queued, and can be normalised across schema versions. Nothing downstream of
-> normalisation exists yet — see the [Roadmap](#roadmap), the
-> [ingestion API reference](docs/ingestion-api.md), and [run normalisation](docs/normalisation.md).
+> **Status: ingestion pipeline built through pseudonymisation (CP-M0, CP-FR-01 – 03).** A pipeline
+> can publish a run bundle and receive `202`; the bundle is authenticated, scope-checked,
+> schema-validated, queued, normalised across schema versions, and stripped of contributor identity
+> before it can reach a store. See the [Roadmap](#roadmap), the
+> [ingestion API reference](docs/ingestion-api.md), [run normalisation](docs/normalisation.md), and
+> [pseudonymisation](docs/pseudonymisation.md).
 
 ## The one constraint that overrides everything else
 
@@ -107,7 +108,8 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-M0 | Module structure, build, quality gates, Spring Boot entry point | Done |
 | CP-FR-01 | Ingestion API: validate, scope-check, enqueue, return `202` | Done |
 | CP-FR-02 | Schema normalisation across the current and N-1 versions | Done |
-| CP-FR-03 – 04 | Pseudonymisation, idempotency and finding lifecycle | Next: CP-FR-03 |
+| CP-FR-03 | Contributor identity pseudonymised at ingest, audited re-identification | Done, with gaps ([details](docs/pseudonymisation.md#not-done-yet)) |
+| CP-FR-04 | Idempotency and finding lifecycle | Next |
 | CP-FR-05 – 07 | System of record, analytics, coverage tracking | Planned |
 | CP-FR-08 – 10 | Policy authoring, signing and publication, rollout stages | Planned |
 | CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
@@ -147,3 +149,16 @@ step, rather than waiting for the final release-gate test.
 - **The queue listener is still not started by the application.** Normalised bundles carry raw
   contributor identity, so nothing may consume the queue until the pseudonymiser (CP-FR-03) and a
   store exist to receive them.
+
+## Decisions and known gaps from CP-FR-03
+
+- **CP-BC-05 and CP-BC-07 are named, not specified, in the prompt.** Interpreted as: identities
+  that differ only cosmetically (case, whitespace, Unicode form) are one person (05); blank or absent
+  identities are dropped and counted rather than pseudonymised into a shared bucket (07).
+- **Evidence is default-deny**, so a new engine's evidence is withheld until its keys are reviewed.
+- **Key Vault is tested against a fake**; the Azure SDK binding is not written.
+- **CP-AC-11 is deferred** to the serve layer and **CP-AC-12 is a surface guard** until the query API
+  exists.
+- **`CpAc09` lives in `control-plane-ingest`, not `-store`** as the prompt places it: it drives the
+  whole pipeline, and `store` cannot depend on `ingest`.
+- See [pseudonymisation](docs/pseudonymisation.md#not-done-yet) for the rest.
