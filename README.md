@@ -117,7 +117,8 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-06 | Materialised read models, trend analytics, architecture drift, remediation effectiveness | Done ([details](docs/analytics.md)) |
 | CP-FR-07 | Coverage and adoption tracking: silent, never-onboarded, degraded, drifted | Done ([details](docs/coverage.md)) |
 | CP-FR-08 | Policy authoring, validation and read-only impact simulation | Done ([details](docs/policy-simulation.md)) |
-| CP-FR-09 – 10 | Policy signing and publication, rollout stages | Planned |
+| CP-FR-09 | Policy signing and publication | Done ([details](docs/policy-publication.md)) |
+| CP-FR-10 | Rollout stages | Planned |
 | CP-FR-11 – 12 | AI explanation and remediation, with the prompt guard | Planned |
 | CP-FR-13 – 16 | Work items, notifications, serve layer | Planned |
 | Cross-cutting | Workload-identity scoping, retention tiering, failure isolation | Planned |
@@ -263,3 +264,34 @@ step, rather than waiting for the final release-gate test.
 - **Retention is not modelled.** An empty finding list could be a clean run or purged evidence; the
   store cannot tell them apart yet, so only a failed read is reported as unavailable evidence.
 - No HTTP API yet, and the `StoreBackedRetainedEvidence` adapter is not wired into the app.
+
+## Decisions and known gaps from CP-FR-09
+
+- **Order is the safety property.** Validate, sign, verify the signature just produced, push, check
+  the registry's digest equals ours, and only then write the catalogue. A failure before the catalogue
+  step leaves the catalogue untouched; a catalogue failure leaves an unreferenced artefact that a retry
+  adopts (identical pushes are idempotent). `PublishOutcome.Failed` says which stage stopped and
+  whether the artefact is already in the registry.
+- **Real ORAS and Key Vault are not bound.** `OrasRegistryClient` and `KeyVaultSigner` are interfaces;
+  the only implementations are `InMemoryRegistryClient` and `LocalSigner` (real ECDSA P-256, so
+  public-key verification behaves as it will in production). Nothing here has talked to a registry or
+  to Key Vault. Binding them needs credentials and a registry to test against.
+- **Signature scheme is mine.** The spec says "signs with Key Vault"; it does not say what a signature
+  covers or how it is stored. I sign the `sha256:` digest string and publish the signature beside the
+  bundle. Real OCI practice (cosign / Notation, signature as a referrer artefact) may be preferable.
+- **The consuming side is separate.** `PolicyBundleFetcher` takes a registry, a verifier and a repository
+  name, and no catalogue or control-plane service, so a pipeline can pull its policy with the control
+  plane off. It refuses content that does not match its digest, a different artefact than was asked for,
+  or a signature that does not verify, and writes no file in those cases. `SignatureVerifier` is split
+  from `KeyVaultSigner` so a consumer never holds signing ability.
+- **Retention is a rule, not a job.** The registry client has no delete (tested), and
+  `SupersededRetention.mustRetain` encodes "two major tool version cycles". Nothing calls it yet,
+  because nothing removes anything; a registry-side retention job should.
+- **Closes a CP-FR-08 gap.** `RegistryPolicyBundleSource` reads a published version's content through
+  the catalogue digest and the verifying fetcher, so the simulator's delta can be real once wired.
+- **Publication is serialised per process only.** Across instances, registry tag immutability is what
+  stops a double publish of one version. The catalogue's `register` is still find-then-save.
+- **Not wired into the app.** No publish endpoint, no configuration, no bean. `control-plane-app` has
+  a compile dependency on governance and uses it in the CP-AC-47 test only.
+- **CP-AC-44 to 47 are defined only by test names in the spec,** so their meaning was interpreted
+  (see `docs/policy-publication.md`).

@@ -17,6 +17,11 @@
       <groupId>com.debthunter.controlplane</groupId>
       <artifactId>control-plane-api</artifactId>
     </dependency>
+    <!-- Not wired into the running application yet; the offline-distribution test uses it. -->
+    <dependency>
+      <groupId>com.debthunter.controlplane</groupId>
+      <artifactId>control-plane-governance</artifactId>
+    </dependency>
     <!-- The only module permitted to put Spring Boot on its production classpath. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>
