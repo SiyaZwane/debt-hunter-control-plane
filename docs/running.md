@@ -7,9 +7,9 @@ plug in.
 ## What is wired
 
 ```
-HTTP POST /api/v1/runs ──► security ──► rate limit ──► parse ──► scope (registry) ──► schema ──► Kafka ──► 202
+HTTP POST /api/v1/runs ──► security ──► rate limit ──► parse ──► scope (registry) ──► schema ──► queue ──► 202
                                                                       │
-                                                                      ▼ (Kafka listener, same process)
+                                                                      ▼ (queue worker, same process)
    receiver (dedupe) ──► normalise ──► pseudonymise ──► findings │ evidence │ lifecycle ──► PostgreSQL
                               └─ can never be normalised ──► quarantine (metadata only)
 ```
@@ -17,7 +17,7 @@ HTTP POST /api/v1/runs ──► security ──► rate limit ──► parse �
 - **The registry decides who may write.** A workload may publish for a repository only if the
   repository has been onboarded and the workload granted it. There is no configuration for this any
   more; `RepositoryRegistryService` is the `RepositoryScopeLookup` the edge asks.
-- **The queue is consumed in the same process.** `IntakeListenerLifecycle` starts after everything
+- **The queue is worked in the same process.** `IntakeWorkerLifecycle` starts after everything
   else is assembled and stops first. Set `debthunter.controlplane.intake.listener-enabled=false` to run
   the ingestion edge alone.
 - **Housekeeping runs hourly** (`retention.sweep-interval`): expired evidence detail moves to the warm
@@ -42,10 +42,9 @@ The schema is migrated (Flyway) before anything else uses the database.
 | `security.admin-role` | `CONTROL_PLANE_ADMIN_ROLE` | `ControlPlane.Admin` |
 | `database.url` / `.username` / `.password` | `CONTROL_PLANE_DB_URL` / `_DB_USER` / `_DB_PASSWORD` | **url required** |
 | `database.max-pool-size` | | `10` |
+| `database.connection-timeout` / `.socket-timeout` | | `PT3S` / `PT30S` |
 | `pseudonym.key` | `CONTROL_PLANE_PSEUDONYM_KEY` | **required**, base64, ≥ 32 bytes |
-| `intake.bootstrap-servers` | `CONTROL_PLANE_KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` |
-| `intake.topic` | | `debt-hunter.run-intake` |
-| `intake.consumer-group` | | `debt-hunter-control-plane` |
+| `intake.encryption-key` | `CONTROL_PLANE_INTAKE_KEY` | **required**, base64, ≥ 32 bytes |
 | `intake.listener-enabled` | | `true` |
 | `intake.max-wait` | | `PT3S` |
 | `rate-limit.max-requests` / `.window` | | `600` / `PT1M` |
@@ -70,8 +69,9 @@ needed.
   so every commit is "unknown": runs apply in arrival order and the run timestamp stands in for the
   commit date. Out-of-order protection is therefore inactive in a real deployment until a source (the
   Git host's API, or a mirror) is wired.
-- **Quarantine keeps metadata only.** The bundle still carries raw contributor identity, so it is not
-  stored; it stays on the intake topic until retention expires. Inspect it there.
+- **Quarantine keeps metadata only.** The bundle still carries raw contributor identity, so the
+  quarantine record does not store it. The bundle itself is set aside on the intake queue, encrypted,
+  for `intake.dead-retention`; after that it is deleted.
 - **Suppression warnings are only logged**; there is no notification channel yet.
-- **The app now needs Docker to test**: its integration tests start Kafka and PostgreSQL.
+- **The app now needs Docker to test**: its integration tests start PostgreSQL.
 - **No Dockerfile or deployment manifest** yet.

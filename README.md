@@ -37,7 +37,7 @@ Nine Maven modules, grouped into the zones of the control plane. Dependencies po
 
 | Module | Zone | Responsibility | Depends on |
 |---|---|---|---|
-| `control-plane-testkit` | — | Test support: bundle fixtures, a JWT issuer with a local JWKS server, a Kafka test broker. Test scope only | — |
+| `control-plane-testkit` | — | Test support: bundle fixtures, a JWT issuer with a local JWKS server, a Testcontainers PostgreSQL. Test scope only | — |
 | `control-plane-store` | B | System of record: registry, runs, findings, transition log, suppressions, baselines, policy catalogue, evidence | `domain` |
 | `control-plane-ingest` | A | Normaliser, pseudonymiser, idempotency, finding-lifecycle state machine | `domain`, `store` |
 | `control-plane-analytics` | C | Metric projection, trends, drift, coverage and adoption | `domain`, `store` |
@@ -66,7 +66,7 @@ jar, which the integration tests run as a separate process, exactly as a pipelin
 `-Djacoco.skip=true` is needed because `-DskipTests` leaves JaCoCo's 80% coverage gate with no data
 to check.
 
-**Docker.** The integration tests start a real Kafka broker with Testcontainers, so a Docker daemon
+**Docker.** The integration tests start a real PostgreSQL with Testcontainers, so a Docker daemon
 must be running. With Colima, point Testcontainers at it:
 
 ```bash
@@ -98,7 +98,7 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 - **No `@Disabled` tests.** Every test passes or the step is not complete.
 - **No `System.exit()` in library code.**
 - **Test the real thing** wherever a real implementation is fast and reliable: Testcontainers for
-  Kafka, PostgreSQL, and Redis; interfaces with in-memory fakes for services that need real cloud
+  PostgreSQL (and Redis when it arrives); interfaces with in-memory fakes for services that need real cloud
   credentials (Key Vault, Entra, Azure OpenAI, an OCI registry), with any real-cloud tests tagged
   `platform` and excluded by default.
 
@@ -207,7 +207,7 @@ step, rather than waiting for the final release-gate test.
 - **There is no commit-graph source**, so out-of-order protection is inactive in a real deployment.
 - **Quarantine keeps metadata only**: the bundle carries raw identity and stays on the intake topic.
 - **Suppression warnings are only logged**; there is no notification channel yet.
-- **The app's integration tests now need Docker** (Kafka and PostgreSQL).
+- **The app's integration tests now need Docker** (PostgreSQL).
 - **No Dockerfile or deployment manifest yet.**
 
 ## Decisions and known gaps from the administration API
@@ -372,3 +372,37 @@ step, rather than waiting for the final release-gate test.
   `control-plane-ai`), because the new enforcer rule showed they would have put the model code on the
   ingestion API's classpath. Nothing imported them. When CP-FR-15 adds read endpoints, decide whether
   they live in `api` (then relax the rule for it) or a separate module.
+
+## Decisions and known gaps from replacing Kafka with a PostgreSQL queue
+
+- **Kafka is gone.** Intake now uses a durable queue in PostgreSQL (`work_queue`, migration V9), behind
+  the same `RunIntakeQueuePublisher` and `RunBundleReceiver` ports. The queue is generic (ordering per
+  key, leases, retry with backoff, dead-lettering, de-duplication, delayed release) so CP-FR-12, 13 and
+  14 can use it too. The spec's technology table says Event Hubs or Kafka; this is a deliberate
+  departure, in the same spirit as choosing PostgreSQL over Azure SQL.
+- **Bundles are encrypted at rest.** A bundle still holds real contributor identities, so it is sealed
+  with AES-256-GCM before it is stored, bound to its repository, and erased when the item is finished.
+  A bundle that is set aside (unreadable, failed too often, or quarantined by the pipeline) keeps its
+  encrypted payload for `intake.dead-retention` (7 days) and is then deleted. The Kafka topic held these
+  payloads in the clear, so this is a net improvement. The key is `intake.encryption-key`, required to
+  start, from configuration until the Key Vault binding exists. There is no key rotation yet: the
+  payload format has a version byte for it.
+- **A dependency being down is a hold, not a failure.** The first version of the new worker would have
+  set bundles aside when the key store was down; CP-BC-06's test caught it. Key store and database
+  failures now put the bundle back without counting the attempt, indefinitely. Only a bundle's own
+  failures count towards `intake.max-attempts`.
+- **Retry is bounded, which Kafka's was not.** A bundle that keeps failing for its own reasons is set
+  aside after `max-attempts` and its repository carries on. That changes ordering for that repository:
+  later bundles can apply before the abandoned one. The lifecycle already copes with late runs.
+- **A PostgreSQL outage returns 503, not 500.** The scope check reads the registry in the database; it
+  was an unhandled 500. It is now a prompt `503 registry_unavailable` with `Retry-After`. Ingestion
+  already depended on PostgreSQL before this change (for the scope check), so replacing Kafka does not
+  make an outage worse; it removes a second system that also had to be up.
+- **Blocking database calls are off the request threads and bounded.** The scope check and the queue
+  write run on Reactor's bounded-elastic pool with a timeout (`intake.max-wait`), and the connection
+  pool and socket have their own timeouts. A timed-out write can still commit afterwards; a retry is
+  de-duplicated by the receiver.
+- **Not changed:** the admin API also makes blocking database calls on request threads. It is not on the
+  pipeline's path, so I left it, but it should get the same treatment.
+- **Not done:** a metric or alert on set-aside bundles (they are logged at error level), an index review
+  under real volume, a polling alternative such as `LISTEN/NOTIFY`, and a Key Vault key.

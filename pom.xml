@@ -60,7 +60,7 @@
 
     <jacoco.line.coverage.minimum>0.80</jacoco.line.coverage.minimum>
 
-    <!-- "integration" tests use real collaborators (Testcontainers: Kafka, PostgreSQL, Redis) and run
+    <!-- "integration" tests use real collaborators (Testcontainers: PostgreSQL, and Redis when it arrives) and run
          via failsafe; "platform" tests need real cloud services (Key Vault, Entra, Azure OpenAI,
          an OCI registry) and never run by default. -->
     <surefire.excludedGroups>integration,platform</surefire.excludedGroups>

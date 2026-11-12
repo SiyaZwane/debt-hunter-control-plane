@@ -1,9 +1,11 @@
 package com.debthunter.controlplane;
 
 import com.debthunter.controlplane.store.evidence.EvidenceStorageService;
+import com.debthunter.controlplane.store.queue.WorkQueue;
 import com.debthunter.controlplane.store.suppressions.SuppressionRegisterService;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -12,8 +14,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.SmartLifecycle;
 
 /**
- * The periodic sweep: moves expired evidence detail to the warm tier and warns the owners of
- * suppressions that are about to lapse.
+ * The periodic sweep: moves expired evidence detail to the warm tier, warns the owners of
+ * suppressions that are about to lapse, and purges old intake queue items (finished ones, and
+ * set-aside bundles once their investigation window has passed).
  *
  * <p>Retention and notification are wall-clock concerns ("it is now past the TTL"), unlike the
  * finding lifecycle, which is judged by commit date. A failure of one task never stops the other or
@@ -25,6 +28,9 @@ final class Housekeeping implements SmartLifecycle {
 
   private final EvidenceStorageService evidence;
   private final SuppressionRegisterService suppressions;
+  private final WorkQueue queue;
+  private final Duration doneRetention;
+  private final Duration deadRetention;
   private final Clock clock;
   private final Duration interval;
   private ScheduledExecutorService scheduler;
@@ -32,10 +38,16 @@ final class Housekeeping implements SmartLifecycle {
   Housekeeping(
       EvidenceStorageService evidence,
       SuppressionRegisterService suppressions,
+      WorkQueue queue,
+      Duration doneRetention,
+      Duration deadRetention,
       Clock clock,
       Duration interval) {
     this.evidence = evidence;
     this.suppressions = suppressions;
+    this.queue = queue;
+    this.doneRetention = doneRetention;
+    this.deadRetention = deadRetention;
     this.clock = clock;
     this.interval = interval;
   }
@@ -57,6 +69,15 @@ final class Housekeeping implements SmartLifecycle {
       }
     } catch (RuntimeException e) {
       log.error("suppression warnings failed; will retry on the next sweep", e);
+    }
+    try {
+      Instant now = clock.instant();
+      int purged = queue.purge(now.minus(doneRetention), now.minus(deadRetention));
+      if (purged > 0) {
+        log.info("purged {} old intake queue item(s)", purged);
+      }
+    } catch (RuntimeException e) {
+      log.error("intake queue purge failed; will retry on the next sweep", e);
     }
   }
 

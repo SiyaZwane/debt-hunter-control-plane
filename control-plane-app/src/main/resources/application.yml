@@ -11,9 +11,10 @@ debthunter:
       audience: ${CONTROL_PLANE_JWT_AUDIENCE:}
       # The role in a token's "roles" claim that grants administration. Pipelines do not carry it.
       admin-role: ${CONTROL_PLANE_ADMIN_ROLE:ControlPlane.Admin}
+    # The intake queue lives in the system of record. Its encryption key is mandatory: bundles still
+    # hold real contributor identities, and are never readable in the database.
     intake:
-      bootstrap-servers: ${CONTROL_PLANE_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-      topic: debt-hunter.run-intake
+      encryption-key: ${CONTROL_PLANE_INTAKE_KEY:}
     # The system of record is mandatory: the application will not start without a database.
     database:
       url: ${CONTROL_PLANE_DB_URL:}

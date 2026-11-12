@@ -2,9 +2,9 @@ package com.debthunter.controlplane.ingest;
 
 import static org.awaitility.Awaitility.await;
 
+import com.debthunter.controlplane.ingest.intake.DurableIntakeWorker;
+import com.debthunter.controlplane.ingest.intake.DurableRunIntakePublisher;
 import com.debthunter.controlplane.ingest.intake.IntakeEnvelopes;
-import com.debthunter.controlplane.ingest.intake.KafkaIntakeListener;
-import com.debthunter.controlplane.ingest.intake.KafkaRunIntakeQueuePublisher;
 import com.debthunter.controlplane.ingest.lifecycle.InMemoryCommitGraph;
 import com.debthunter.controlplane.ingest.lifecycle.LifecycleSink;
 import com.debthunter.controlplane.ingest.normalise.RunNormaliser;
@@ -27,20 +27,19 @@ import com.debthunter.controlplane.store.lifecycle.InMemoryTransitionLogReposito
 import com.debthunter.controlplane.store.lifecycle.JdbcFindingStateRepository;
 import com.debthunter.controlplane.store.lifecycle.JdbcTransitionLogRepository;
 import com.debthunter.controlplane.store.lifecycle.TransitionLogRepository;
+import com.debthunter.controlplane.store.queue.WorkQueue;
 import com.debthunter.controlplane.store.runs.InMemoryRunRepository;
 import com.debthunter.controlplane.store.runs.JdbcRunRepository;
 import com.debthunter.controlplane.store.runs.RunRepository;
 import com.debthunter.controlplane.store.suppressions.InMemorySuppressionLookup;
-import com.debthunter.controlplane.testkit.KafkaTestBroker;
 import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 
 /**
- * The whole ingest path from the queue to the stores: a real Kafka broker, the listener, the
+ * The whole ingest path from the queue to the stores: the durable queue, the worker, the
  * de-duplicating receiver, normalisation, the pseudonymising gate, and the finding store.
  */
 final class IngestPipeline implements AutoCloseable {
@@ -54,6 +53,7 @@ final class IngestPipeline implements AutoCloseable {
     final TransitionLogRepository transitions;
     final InMemoryCommitGraph commits = new InMemoryCommitGraph();
     final InMemorySuppressionLookup suppressions = new InMemorySuppressionLookup();
+    final WorkQueue queue;
 
     /** In-memory stores. */
     Stores() {
@@ -61,6 +61,7 @@ final class IngestPipeline implements AutoCloseable {
       runs = new InMemoryRunRepository();
       states = new InMemoryFindingStateRepository();
       transitions = new InMemoryTransitionLogRepository();
+      queue = IntakeTestQueue.inMemory();
     }
 
     /** Durable stores over PostgreSQL. The pseudonym directory is deliberately not durable here. */
@@ -69,6 +70,7 @@ final class IngestPipeline implements AutoCloseable {
       runs = new JdbcRunRepository(dataSource);
       states = new JdbcFindingStateRepository(dataSource);
       transitions = new JdbcTransitionLogRepository(dataSource);
+      queue = IntakeTestQueue.over(dataSource);
     }
   }
 
@@ -82,8 +84,8 @@ final class IngestPipeline implements AutoCloseable {
   final InMemorySuppressionLookup suppressions;
   final List<String> quarantinedRunIds = new CopyOnWriteArrayList<>();
 
-  private final KafkaRunIntakeQueuePublisher publisher;
-  private final KafkaIntakeListener listener;
+  private final DurableRunIntakePublisher publisher;
+  private final DurableIntakeWorker worker;
 
   IngestPipeline(PseudonymKeyStore keyStore) throws Exception {
     this(keyStore, new Stores(), null);
@@ -107,8 +109,6 @@ final class IngestPipeline implements AutoCloseable {
     this.commits = stores.commits;
     this.suppressions = stores.suppressions;
     TransitionLogRepository log = transitionLog == null ? stores.transitions : transitionLog;
-    String bootstrap = KafkaTestBroker.bootstrapServers();
-    String topic = KafkaTopics.create(bootstrap);
     RunBundleReceiver receiver =
         new RunBundleReceiver(
             new InMemoryRunBundleDeduplicator(100),
@@ -121,10 +121,8 @@ final class IngestPipeline implements AutoCloseable {
                             new FindingStoreSink(findings),
                             new LifecycleSink(runs, states, log, commits, suppressions)))),
                 (envelope, reason) -> quarantinedRunIds.add(envelope.runId())));
-    publisher = KafkaRunIntakeQueuePublisher.connect(bootstrap, topic, Duration.ofSeconds(10));
-    listener =
-        KafkaIntakeListener.connect(bootstrap, "group-" + UUID.randomUUID(), topic, receiver);
-    listener.start();
+    publisher = IntakeTestQueue.publisher(stores.queue);
+    worker = IntakeTestQueue.startedWorker(stores.queue, receiver);
   }
 
   /** Publishes a bundle to the queue and returns without waiting for it to be processed. */
@@ -147,7 +145,6 @@ final class IngestPipeline implements AutoCloseable {
 
   @Override
   public void close() {
-    listener.close();
-    publisher.close();
+    worker.close();
   }
 }

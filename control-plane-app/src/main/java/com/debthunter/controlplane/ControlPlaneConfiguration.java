@@ -9,10 +9,18 @@ import com.debthunter.controlplane.api.security.ControlPlaneJwtDecoders;
 import com.debthunter.controlplane.api.security.IngestionSecurityConfiguration;
 import com.debthunter.controlplane.egress.alert.LoggingSecurityAlertPublisher;
 import com.debthunter.controlplane.egress.alert.SecurityAlertPublisher;
-import com.debthunter.controlplane.ingest.intake.KafkaRunIntakeQueuePublisher;
+import com.debthunter.controlplane.ingest.intake.DurableRunIntakePublisher;
+import com.debthunter.controlplane.ingest.intake.IntakeEnvelopeCodec;
+import com.debthunter.controlplane.ingest.intake.IntakeQueue;
 import com.debthunter.controlplane.ingest.intake.RunIntakeQueuePublisher;
+import com.debthunter.controlplane.store.queue.AesGcmPayloadCipher;
+import com.debthunter.controlplane.store.queue.JdbcWorkQueue;
+import com.debthunter.controlplane.store.queue.PayloadCipher;
+import com.debthunter.controlplane.store.queue.WorkQueue;
 import java.net.URI;
 import java.time.Clock;
+import java.util.Base64;
+import javax.sql.DataSource;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -80,16 +88,59 @@ public class ControlPlaneConfiguration {
   }
 
   /**
-   * The intake queue publisher. Closed with the application context.
+   * Encrypts what is queued. Refuses to be built without a usable key: a bundle holds real
+   * contributor identities and must never sit in the database readable, and there is no fallback.
    *
    * @param properties the control-plane configuration
-   * @return a Kafka-backed publisher
+   * @return the cipher
    */
   @Bean
-  public RunIntakeQueuePublisher runIntakeQueuePublisher(ControlPlaneProperties properties) {
+  public PayloadCipher intakePayloadCipher(ControlPlaneProperties properties) {
+    String key = properties.intake().encryptionKey();
+    if (isBlank(key)) {
+      throw new IllegalStateException(
+          "The intake encryption key is not configured. Set debthunter.controlplane.intake"
+              + ".encryption-key (environment: CONTROL_PLANE_INTAKE_KEY) to at least 32"
+              + " base64-encoded bytes.");
+    }
+    try {
+      return new AesGcmPayloadCipher(Base64.getDecoder().decode(key.strip()));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalStateException(
+          "debthunter.controlplane.intake.encryption-key must be base64-encoded and at least 32"
+              + " bytes");
+    }
+  }
+
+  /**
+   * The durable work queue, in the system of record.
+   *
+   * @param dataSource the database
+   * @param properties the control-plane configuration
+   * @param clock the clock delays and leases are measured by
+   * @return the queue
+   */
+  @Bean
+  public WorkQueue workQueue(
+      DataSource dataSource, ControlPlaneProperties properties, Clock clock) {
     ControlPlaneProperties.Intake intake = properties.intake();
-    return KafkaRunIntakeQueuePublisher.connect(
-        intake.bootstrapServers(), intake.topic(), intake.maxWait());
+    return new JdbcWorkQueue(
+        dataSource,
+        IntakeQueue.policies(
+            intake.maxAttempts(), intake.lease(), intake.initialBackoff(), intake.maxBackoff()),
+        clock);
+  }
+
+  /**
+   * The intake queue publisher.
+   *
+   * @param queue the durable queue
+   * @param cipher encrypts each bundle before it is stored
+   * @return a publisher backed by the system of record
+   */
+  @Bean
+  public RunIntakeQueuePublisher runIntakeQueuePublisher(WorkQueue queue, PayloadCipher cipher) {
+    return new DurableRunIntakePublisher(queue, cipher, new IntakeEnvelopeCodec());
   }
 
   /**
@@ -116,10 +167,12 @@ public class ControlPlaneConfiguration {
   }
 
   /**
-   * Consumes the intake queue and drives bundles through the pipeline. Off when {@code
+   * Works the intake queue and drives bundles through the pipeline. Off when {@code
    * intake.listener-enabled} is false, to run the ingestion edge alone.
    *
    * @param properties the control-plane configuration
+   * @param queue the durable queue
+   * @param cipher decrypts the bundles
    * @param receiver the head of the pipeline
    * @return the lifecycle component
    */
@@ -129,10 +182,12 @@ public class ControlPlaneConfiguration {
       name = "listener-enabled",
       havingValue = "true",
       matchIfMissing = true)
-  IntakeListenerLifecycle intakeListenerLifecycle(
+  IntakeWorkerLifecycle intakeWorkerLifecycle(
       ControlPlaneProperties properties,
+      WorkQueue queue,
+      PayloadCipher cipher,
       com.debthunter.controlplane.ingest.receive.RunBundleReceiver receiver) {
-    return new IntakeListenerLifecycle(properties.intake(), receiver);
+    return new IntakeWorkerLifecycle(properties.intake(), queue, cipher, receiver);
   }
 
   /**
@@ -140,6 +195,7 @@ public class ControlPlaneConfiguration {
    *
    * @param evidence evidence storage
    * @param suppressions the suppression register
+   * @param queue the durable queue, whose old items are purged
    * @param clock the clock
    * @param properties the control-plane configuration
    * @return the lifecycle component
@@ -148,9 +204,17 @@ public class ControlPlaneConfiguration {
   Housekeeping housekeeping(
       com.debthunter.controlplane.store.evidence.EvidenceStorageService evidence,
       com.debthunter.controlplane.store.suppressions.SuppressionRegisterService suppressions,
+      WorkQueue queue,
       Clock clock,
       ControlPlaneProperties properties) {
-    return new Housekeeping(evidence, suppressions, clock, properties.retention().sweepInterval());
+    return new Housekeeping(
+        evidence,
+        suppressions,
+        queue,
+        properties.intake().doneRetention(),
+        properties.intake().deadRetention(),
+        clock,
+        properties.retention().sweepInterval());
   }
 
   private static boolean isBlank(String value) {

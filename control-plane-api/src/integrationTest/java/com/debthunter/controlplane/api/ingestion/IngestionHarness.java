@@ -48,7 +48,11 @@ final class IngestionHarness implements AutoCloseable {
     context.register(HarnessConfiguration.class);
     context.registerBean("clock", Clock.class, () -> clock);
     context.registerBean(
-        RepositoryScopeLookup.class, () -> new InMemoryRepositoryScopeLookup(builder.scopes));
+        RepositoryScopeLookup.class,
+        () ->
+            builder.scopeLookup != null
+                ? builder.scopeLookup
+                : new InMemoryRepositoryScopeLookup(builder.scopes));
     context.registerBean(
         RunIntakeQueuePublisher.class, () -> builder.queue != null ? builder.queue : queue);
     context.registerBean(SecurityAlertPublisher.class, () -> alerts);
@@ -109,11 +113,17 @@ final class IngestionHarness implements AutoCloseable {
   static final class Builder {
     private Map<String, List<String>> scopes = Map.of(SERVICE, List.of(REPOSITORY));
     private RunIntakeQueuePublisher queue;
+    private RepositoryScopeLookup scopeLookup;
     private RequestRateLimiter rateLimiter;
     private RunBundleSchemaValidator schemaValidator;
 
     Builder scopes(Map<String, List<String>> scopes) {
       this.scopes = scopes;
+      return this;
+    }
+
+    Builder scopeLookup(RepositoryScopeLookup scopeLookup) {
+      this.scopeLookup = scopeLookup;
       return this;
     }
 

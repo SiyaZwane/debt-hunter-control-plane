@@ -11,7 +11,7 @@
   </parent>
 
   <artifactId>control-plane-testkit</artifactId>
-  <description>Shared test support: run-bundle fixtures, a JWT issuer with a local JWKS server, and a Testcontainers Kafka broker. Consumed in test scope only.</description>
+  <description>Shared test support: run-bundle fixtures, a JWT issuer with a local JWKS server. Consumed in test scope only.</description>
 
   <properties>
     <!-- Test-support code, not production code: it is exercised by the modules that consume it
@@ -28,10 +28,6 @@
     <dependency>
       <groupId>org.springframework.security</groupId>
       <artifactId>spring-security-oauth2-jose</artifactId>
-    </dependency>
-    <dependency>
-      <groupId>org.testcontainers</groupId>
-      <artifactId>kafka</artifactId>
     </dependency>
     <dependency>
       <groupId>org.testcontainers</groupId>

@@ -118,16 +118,36 @@ sleeping.
 
 ## The intake queue
 
-Accepted bundles are published to a Kafka topic, **keyed by repository** so one repository's bundles
-stay in order on one partition. Delivery is at-least-once, so duplicates are normal:
+Accepted bundles go onto a **durable queue in PostgreSQL** (the `work_queue` table), ordered per
+repository. A bundle is durable the moment the `202` is sent, because the enqueue is a committed
+database write. Delivery is at-least-once, so duplicates are normal:
 
 - The receiver de-duplicates on `run.id`, and marks a run processed only **after** the next stage
-  succeeds — so a transient fault delays a bundle but never loses one.
-- On a processing failure the listener **holds**: it rewinds to the failed record and retries with
-  backoff rather than skipping it. A record that can never be decoded is logged and skipped, since
-  it could never succeed and would otherwise block its partition forever.
+  succeeds, so a transient fault delays a bundle but never loses one.
+- A worker claims bundles under a lease. If it dies, the lease expires and the bundle goes to another
+  worker. A repository's bundles are handled oldest first, and one repository's stuck bundle does not
+  hold up the others.
+- **A dependency being down is a hold, not a failure.** If the pseudonym key store or the database is
+  unavailable, the bundle is put back without counting the attempt, for as long as that lasts, and is
+  never set aside on account of it (CP-BC-06: ingest must hold, not lose).
+- **A bundle that fails for its own reasons** is retried with a growing delay, and after
+  `intake.max-attempts` it is set aside as dead and logged at error level, so one bundle that can never
+  succeed cannot hold up its repository for ever. A bundle that cannot be decrypted or decoded is set
+  aside at once, and so is one the pipeline quarantines as never processable (its metadata is in the
+  quarantine record; the bundle itself waits here, encrypted).
+- **Bundles are encrypted in the table.** A bundle still holds real contributor identities, so it is
+  sealed with AES-256-GCM (key: `intake.encryption-key`) before it is stored, bound to its repository.
+  When a bundle is finished its payload is **erased**; a set-aside bundle keeps its encrypted payload
+  for `intake.dead-retention` so someone can investigate, then is deleted. Only the exception's type
+  is recorded against a failed item, never its message.
 
-The application consumes the queue in the same process, and runs each bundle through the
+The edge does its blocking work off the request threads and bounds it: the registry lookup (the scope
+check) and the queue write each run on a bounded pool with a timeout of `intake.max-wait`. If either
+cannot finish, the pipeline gets a prompt **`503`** with `Retry-After`: `registry_unavailable` when
+the registry could not be read, `intake_unavailable` when the queue could not take the bundle. A
+timed-out write may still commit afterwards; if the pipeline retries, the receiver de-duplicates.
+
+The application works the queue in the same process, and runs each bundle through the
 [normaliser](normalisation.md), the [pseudonymiser](pseudonymisation.md), and the
 [lifecycle](lifecycle.md) into the [system of record](system-of-record.md). See
 [running the control plane](running.md) for how it is assembled.
@@ -139,15 +159,18 @@ The application consumes the queue in the same process, and runs each bundle thr
 | `debthunter.controlplane.security.jwk-set-uri` | `CONTROL_PLANE_JWK_SET_URI` | — | **Required** |
 | `debthunter.controlplane.security.issuer` | `CONTROL_PLANE_JWT_ISSUER` | — | **Required** |
 | `debthunter.controlplane.security.audience` | `CONTROL_PLANE_JWT_AUDIENCE` | — | **Required** |
-| `debthunter.controlplane.intake.bootstrap-servers` | `CONTROL_PLANE_KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Kafka cluster |
-| `debthunter.controlplane.intake.topic` | — | `debt-hunter.run-intake` | |
-| `debthunter.controlplane.intake.max-wait` | — | `PT3S` | Bound on any queue wait |
+| `debthunter.controlplane.intake.encryption-key` | `CONTROL_PLANE_INTAKE_KEY` | — | **Required**, base64, at least 32 bytes |
+| `debthunter.controlplane.intake.max-wait` | — | `PT3S` | Bound on the registry lookup and the queue write (ISO-8601) |
+| `debthunter.controlplane.intake.max-attempts` | — | `10` | Tries before a failing bundle is set aside |
+| `debthunter.controlplane.intake.lease` | — | `PT5M` | How long a worker may hold a bundle |
+| `debthunter.controlplane.intake.initial-backoff` / `.max-backoff` | — | `PT1S` / `PT30S` | Retry delays; the max is also the hold delay |
+| `debthunter.controlplane.intake.dead-retention` | — | `P7D` | How long a set-aside bundle is kept, encrypted |
 | `debthunter.controlplane.rate-limit.max-requests` | — | `600` | Per identity, per window |
 | `debthunter.controlplane.rate-limit.window` | — | `PT1M` | |
 | `debthunter.controlplane.ingest.schema.current-major` | — | `1` | Newest accepted schema major |
 | `debthunter.controlplane.ingest.max-bundle-bytes` | — | `10485760` | Largest accepted bundle |
 
-The three security settings are mandatory: the application refuses to start without them rather than
+The three security settings and the intake encryption key are mandatory: the application refuses to start without them rather than
 run unauthenticated. Which workload may publish for which repository is no longer configuration: it
 is decided by the repository registry (a repository must be onboarded and the workload granted it).
 The full configuration, including the database and pseudonymisation key, is in
