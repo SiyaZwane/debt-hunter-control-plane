@@ -113,6 +113,11 @@ class CpBc08_Bc09_Bc11_LifecycleBoundariesTest {
           }
 
           @Override
+          public long latestSeq() {
+            return stores.transitions.latestSeq();
+          }
+
+          @Override
           public List<FindingTransitionEvent> historyOf(String r, String p, String f) {
             return stores.transitions.historyOf(r, p, f);
           }

@@ -30,6 +30,11 @@ class WorkItemSyncHandlerTest {
     }
 
     @Override
+    public long latestSeq() {
+      throw new StoreException("down", null);
+    }
+
+    @Override
     public List<FindingTransitionEvent> historyOf(String r, String s, String f) {
       throw new StoreException("down", null);
     }

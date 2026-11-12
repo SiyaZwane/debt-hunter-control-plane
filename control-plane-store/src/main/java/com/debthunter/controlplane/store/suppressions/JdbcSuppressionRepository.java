@@ -61,6 +61,18 @@ public final class JdbcSuppressionRepository implements SuppressionRepository {
   }
 
   @Override
+  public List<Suppression> findExpiring(Instant from, Instant to) {
+    return jdbc.query(
+        "SELECT "
+            + COLUMNS
+            + " FROM suppression WHERE expires_at >= ? AND expires_at < ?"
+            + " ORDER BY expires_at, suppression_id",
+        JdbcSuppressionRepository::map,
+        from,
+        to);
+  }
+
+  @Override
   public List<Suppression> findUnnotified() {
     return jdbc.query(
         "SELECT "

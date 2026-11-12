@@ -34,6 +34,8 @@ class EgressArchitectureTest {
       noClasses()
           .that()
           .doNotHaveSimpleName("TrackerHttp")
+          .and()
+          .doNotHaveSimpleName("WebhookHttp")
           .should()
           .dependOnClassesThat()
           .resideInAPackage("java.net.http..");

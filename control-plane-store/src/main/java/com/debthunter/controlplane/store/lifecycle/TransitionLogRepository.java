@@ -31,6 +31,13 @@ public interface TransitionLogRepository {
   List<SequencedTransition> after(long afterSeq, int limit);
 
   /**
+   * The position of the newest event, for a consumer that wants to mark "everything so far".
+   *
+   * @return the highest position appended, or {@code 0} if the log is empty
+   */
+  long latestSeq();
+
+  /**
    * Reads one finding's history in the order it was appended.
    *
    * @param repository the repository

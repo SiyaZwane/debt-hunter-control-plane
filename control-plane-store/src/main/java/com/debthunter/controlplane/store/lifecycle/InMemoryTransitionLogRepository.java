@@ -30,6 +30,11 @@ public final class InMemoryTransitionLogRepository implements TransitionLogRepos
   }
 
   @Override
+  public synchronized long latestSeq() {
+    return log.size();
+  }
+
+  @Override
   public synchronized List<FindingTransitionEvent> historyOf(
       String repository, String projectSlice, String fingerprint) {
     return log.stream()

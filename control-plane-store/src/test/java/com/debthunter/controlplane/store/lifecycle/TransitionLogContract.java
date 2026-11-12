@@ -35,7 +35,8 @@ abstract class TransitionLogContract {
         Arrays.stream(TransitionLogRepository.class.getMethods()).map(Method::getName).toList();
 
     // Reading forward (after) is fine; the point is that nothing can change or remove an event.
-    assertThat(names).containsExactlyInAnyOrder("append", "after", "historyOf", "eventsOfRun");
+    assertThat(names)
+        .containsExactlyInAnyOrder("append", "after", "latestSeq", "historyOf", "eventsOfRun");
     assertThat(names)
         .noneMatch(n -> n.startsWith("update") || n.startsWith("delete") || n.startsWith("remove"));
   }
@@ -51,6 +52,21 @@ abstract class TransitionLogContract {
     assertThat(log.historyOf("acme/widgets", "default", "fp-a"))
         .extracting(FindingTransitionEvent::toState)
         .containsExactly(FindingState.NEW, FindingState.OPEN, FindingState.RESOLVED);
+  }
+
+  @Test
+  void theLatestPositionIsZeroForAnEmptyLogAndGrowsWithEachNewEvent() {
+    assertThat(log.latestSeq()).isZero();
+
+    log.append(List.of(event("e1", "r1", "fp-a", null, FindingState.NEW)));
+    long first = log.latestSeq();
+    log.append(List.of(event("e1", "r1", "fp-a", null, FindingState.NEW)));
+    assertThat(log.latestSeq()).as("a repeated append adds nothing").isEqualTo(first);
+
+    log.append(List.of(event("e2", "r2", "fp-a", FindingState.NEW, FindingState.OPEN)));
+    assertThat(log.latestSeq()).isGreaterThan(first);
+    assertThat(log.after(first, 10)).hasSize(1);
+    assertThat(log.after(log.latestSeq(), 10)).isEmpty();
   }
 
   @Test
