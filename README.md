@@ -124,7 +124,9 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-13 | Work-item lifecycle: one item per fingerprint, transactional outbox, Jira and Azure Boards adapters | Done ([details](docs/work-items.md)) |
 | CP-FR-14 | Digest notifications: one per squad per period, Slack and Teams | Done ([details](docs/digest-notifications.md)) |
 | CP-FR-15, 16 | Serve layer: portfolio, squad view, query API, evidence retrieval | Done ([details](docs/serve-layer.md)) |
-| Cross-cutting | Workload-identity scoping, retention tiering, failure isolation | Planned |
+| Cross-cutting A | Squad suppressions, durable audit trails, auditor role | Done ([details](docs/audit-and-suppressions.md)) |
+| Cross-cutting B | Persistent pseudonym directory, retention and export guarantees | Planned |
+| Cross-cutting C | Application wiring of the serve layer, egress and digests; failure isolation | Planned |
 | Release gate | Offline conformance test — the whole control plane down, pipeline still delivers | Planned |
 
 CP-AC-05 — the real data-plane CLI completing a scan, with a warning and nothing worse, while the
@@ -576,3 +578,40 @@ step, rather than waiting for the final release-gate test.
 - **Not wired into the application:** no beans or configuration; it joins with the cross-cutting step.
 - **Not done:** the audit reader and role, per-repository thresholds, indexes for the query joins, and an
   admin endpoint for squad membership.
+
+## Decisions and known gaps from cross-cutting step A (security and audit)
+
+- **Squads suppress their own findings over HTTP** (`POST` and `DELETE` under
+  `/api/v1/squads/{squad}/suppressions`). Any member of the squad can; there is no second approver. A
+  suppression needs a reason of at least 10 characters and an expiry in the future and within
+  `maxExpiryDays` of now. That cap is a constructor argument (90 in the tests); **nothing in the policy
+  bundle supplies it yet,** and the application does not wire the serve layer until step C.
+- **The suppression is not checked against a known finding.** A squad can suppress a fingerprint that has
+  not appeared yet, but only in a repository it owns, so it affects nobody else.
+- **A refusal is recorded; a grant is recorded first.** A suppression or withdrawal is written to the audit
+  trail before it is applied, and is not applied if the write fails (503). A refused attempt (another squad's
+  repository, a squad the caller is not in, a repository that does not exist) is recorded best-effort and is
+  refused either way.
+- **One durable audit trail for three kinds of event** (`audit_trail`, migration V13): administration
+  changes, re-identification requests and suppressions. Evidence retrievals keep their own table. The
+  administration log is now durable and wired into the application; the re-identification log has a
+  durable adapter but **re-identification still has no caller** (no endpoint, and the pseudonym directory is
+  still in memory), so that trail stays empty until step B.
+- **A new role, `ControlPlane.Auditor`,** reads all four trails through `GET /api/v1/audit/{trail}`. It is
+  separate from every role that makes the audited changes. Reading the trails is itself **not** audited.
+- **Audit entries are kept at least 90 days.** The retention is configurable
+  (`retention.audit-retention`, default one year) and the application refuses to start if it is set under
+  90 days. The housekeeping sweep removes older entries. The evidence log has no purge at all.
+- **Paging is by time, not by id:** a full page returns `nextFrom`, and entries at that instant repeat on
+  the next page, so a reader de-duplicates.
+- **Instants in serve responses are ISO-8601 text** whatever hosts the API (the test harness was emitting
+  epoch numbers).
+- **CP-AC-85 was already true;** the new test and an ArchUnit rule pin it (only the ingestion controller
+  writes to the queue, and it depends on the scope check). It stays in the controller rather than a web
+  filter, because the repository being claimed is in the request body.
+- **Spec test locations differ:** CP-AC-86 is in `control-plane-serve` (the squad API is there; `api` cannot
+  depend on it) and CP-AC-88 is in `control-plane-api` (the administration API is there; `store` has no HTTP
+  surface). CP-AC-11 and CP-AC-87 are new tests over the whole read surface.
+- **Not done here:** the pseudonym directory, an export guarantee (CP-AC-90), a named hot-to-warm test
+  (CP-AC-89), and everything about wiring and failure isolation (CP-AC-92 to 95).
+

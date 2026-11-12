@@ -120,10 +120,13 @@ public record ControlPlaneProperties(
    * @param evidenceHotTtl how long full evidence detail stays in the hot tier
    * @param sweepInterval how often expired evidence is moved to the warm tier and suppression
    *     warnings are raised
+   * @param auditRetention how long audit entries are kept before the sweep removes them; the
+   *     application refuses to start if this is under ninety days
    */
   public record Retention(
       @DefaultValue("P30D") Duration evidenceHotTtl,
-      @DefaultValue("PT1H") Duration sweepInterval) {}
+      @DefaultValue("PT1H") Duration sweepInterval,
+      @DefaultValue("P365D") Duration auditRetention) {}
 
   /**
    * Analytics read models. They are derived from the system of record, built asynchronously, and

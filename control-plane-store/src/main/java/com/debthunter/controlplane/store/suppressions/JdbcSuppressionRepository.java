@@ -56,6 +56,14 @@ public final class JdbcSuppressionRepository implements SuppressionRepository {
   }
 
   @Override
+  public Optional<Suppression> findById(String id) {
+    return jdbc.queryOne(
+        "SELECT " + COLUMNS + " FROM suppression WHERE suppression_id = ?",
+        JdbcSuppressionRepository::map,
+        id);
+  }
+
+  @Override
   public boolean delete(String id) {
     return jdbc.update("DELETE FROM suppression WHERE suppression_id = ?", id) > 0;
   }

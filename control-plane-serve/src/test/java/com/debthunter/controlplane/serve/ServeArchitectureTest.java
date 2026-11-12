@@ -45,7 +45,12 @@ class ServeArchitectureTest {
           .and()
           .areDeclaredInClassesThat()
           .resideInAnyPackage(
-              "..serve.portfolio..", "..serve.squad..", "..serve.query..", "..serve.evidence..")
+              "..serve.portfolio..",
+              "..serve.squad..",
+              "..serve.query..",
+              "..serve.evidence..",
+              "..serve.suppression..",
+              "..serve.audit..")
           .should(TAKE_A_CALLER_FIRST);
 
   @ArchTest

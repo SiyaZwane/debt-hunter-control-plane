@@ -61,6 +61,15 @@ abstract class SuppressionRepositoryContract {
   }
 
   @Test
+  void aSuppressionCanBeFoundByItsId() {
+    repository.save(suppression("s1", "fp-a"));
+    repository.save(suppression("s2", "fp-b"));
+
+    assertThat(repository.findById("s2")).contains(suppression("s2", "fp-b"));
+    assertThat(repository.findById("nope")).isEmpty();
+  }
+
+  @Test
   void deletingRemovesIt() {
     repository.save(suppression("s1", "fp-a"));
 

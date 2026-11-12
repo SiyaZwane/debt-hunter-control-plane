@@ -56,6 +56,18 @@ final class Web {
         .onErrorResume(Web::toError);
   }
 
+  /** Runs a blocking change off the event loop and answers with the given status. */
+  static Mono<ResponseEntity<Object>> blocking(
+      Mono<Principal> principal,
+      HttpStatus status,
+      java.util.function.Function<Caller, Object> change) {
+    return principal
+        .map(Web::caller)
+        .publishOn(Schedulers.boundedElastic())
+        .map(caller -> ResponseEntity.status(status).body(change.apply(caller)))
+        .onErrorResume(Web::toError);
+  }
+
   /** Runs a blocking read that needs no caller. */
   static Mono<ResponseEntity<Object>> blocking(Callable<Object> read) {
     return Mono.fromCallable(read)

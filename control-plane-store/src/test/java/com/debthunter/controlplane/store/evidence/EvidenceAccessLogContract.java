@@ -51,10 +51,23 @@ abstract class EvidenceAccessLogContract {
   }
 
   @Test
+  void aLimitCapsTheCountAndKeepsTheOldestFirst() {
+    EvidenceAccessLog log = newLog();
+    log.record(access(T0, "alice", EvidenceAccess.Outcome.GRANTED));
+    log.record(access(T0.plusSeconds(5), "bob", EvidenceAccess.Outcome.GRANTED));
+    log.record(access(T0.plusSeconds(9), "carol", EvidenceAccess.Outcome.GRANTED));
+
+    assertThat(log.since(T0, 2)).extracting(EvidenceAccess::caller).containsExactly("alice", "bob");
+    assertThat(log.since(T0.plusSeconds(1), 5))
+        .extracting(EvidenceAccess::caller)
+        .containsExactly("bob", "carol");
+  }
+
+  @Test
   void theLogOffersNoWayToChangeOrRemoveAnEntry() {
     List<String> names =
         Arrays.stream(EvidenceAccessLog.class.getMethods()).map(Method::getName).toList();
 
-    assertThat(names).containsExactlyInAnyOrder("record", "since");
+    assertThat(names).containsOnly("record", "since");
   }
 }

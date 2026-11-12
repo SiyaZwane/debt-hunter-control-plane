@@ -47,4 +47,24 @@ public final class JdbcEvidenceAccessLog implements EvidenceAccessLog {
                 EvidenceAccess.Outcome.valueOf(row.getString("outcome"))),
         from);
   }
+
+  @Override
+  public List<EvidenceAccess> since(Instant from, int limit) {
+    return jdbc.query(
+        "SELECT accessed_at, caller, run_id, repository, purpose, outcome FROM evidence_access_log"
+            + " WHERE accessed_at >= ? ORDER BY id LIMIT ?",
+        JdbcEvidenceAccessLog::map,
+        from,
+        limit);
+  }
+
+  private static EvidenceAccess map(java.sql.ResultSet row) throws java.sql.SQLException {
+    return new EvidenceAccess(
+        Jdbc.instant(row, "accessed_at"),
+        row.getString("caller"),
+        row.getString("run_id"),
+        row.getString("repository"),
+        row.getString("purpose"),
+        EvidenceAccess.Outcome.valueOf(row.getString("outcome")));
+  }
 }

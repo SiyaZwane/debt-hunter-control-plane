@@ -13,6 +13,7 @@ A token carries `roles` and `squads` claims (a squad is a repository owner):
 | `ControlPlane.Leader` | the portfolio: one row per team, no repository names | any finding, repository or evidence |
 | `ControlPlane.Squad` | the squad view and the query API, for the squads in the token | another squad's repositories, whether or not they exist |
 | `ControlPlane.Evidence` | a run's evidence, for runs of the squads in the token | a run of another squad (it looks like a run that does not exist) |
+| `ControlPlane.Auditor` | the audit trails ([details](audit-and-suppressions.md)) | anything else |
 
 Access is checked **in the services**, not only the controllers. Every public method of a service takes a
 `Caller` and checks it before reading anything (an ArchUnit rule enforces that the `Caller` parameter is
@@ -28,6 +29,9 @@ there). A controller added later cannot widen access.
 | `GET /api/v1/squads/{squad}/finding?repository=&run=&id=` | `SquadViewService` | a finding with its explanation and who or what wrote it |
 | `GET /api/v1/findings` | `QueryService` | the query API over all the caller's squads |
 | `GET /api/v1/evidence/runs/{runId}?purpose=` | `EvidenceRetrievalService` | needs a stated purpose; every call is recorded |
+| `POST /api/v1/squads/{squad}/suppressions` | `SquadSuppressionService` | squad members, own repositories only ([details](audit-and-suppressions.md)) |
+| `DELETE /api/v1/squads/{squad}/suppressions/{id}` | `SquadSuppressionService` | withdraw one |
+| `GET /api/v1/audit/{trail}` | `AuditReadService` | auditors only |
 
 Query filters: `repository`, `severity`, `category`, `state`, `from`, `to` (the commit date of the latest
 run that reported the finding; ISO-8601), `limit` (1 to 200, default 50) and `cursor`. Anything that does

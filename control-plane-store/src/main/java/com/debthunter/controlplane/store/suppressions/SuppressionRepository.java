@@ -12,6 +12,9 @@ public interface SuppressionRepository {
   /** Looks up the suppression on a finding. */
   Optional<Suppression> find(String repository, String fingerprint);
 
+  /** Looks up a suppression by id. */
+  Optional<Suppression> findById(String id);
+
   /** Removes a suppression by id; returns whether it existed. */
   boolean delete(String id);
 

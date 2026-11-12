@@ -1,5 +1,9 @@
 package com.debthunter.controlplane;
 
+import com.debthunter.controlplane.api.admin.AdminAuditLog;
+import com.debthunter.controlplane.api.admin.TrailAdminAuditLog;
+import com.debthunter.controlplane.store.audit.AuditRetention;
+import com.debthunter.controlplane.store.audit.JdbcAuditTrail;
 import com.debthunter.controlplane.store.baselines.BaselineRegistryService;
 import com.debthunter.controlplane.store.baselines.JdbcBaselineRegistryRepository;
 import com.debthunter.controlplane.store.evidence.EvidenceStorageService;
@@ -26,6 +30,7 @@ import com.debthunter.controlplane.store.suppressions.SuppressionEventPublisher;
 import com.debthunter.controlplane.store.suppressions.SuppressionRegisterService;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
+import java.time.Clock;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -218,5 +223,43 @@ public class StoreConfiguration {
       DataSource dataSource, ControlPlaneProperties properties) {
     return new EvidenceStorageService(
         new JdbcEvidenceRepository(dataSource), properties.retention().evidenceHotTtl());
+  }
+
+  /**
+   * The durable audit trail: administrative changes, re-identification requests and suppressions.
+   *
+   * @param dataSource the database
+   * @return the trail
+   */
+  @Bean
+  public JdbcAuditTrail auditTrail(DataSource dataSource) {
+    return new JdbcAuditTrail(dataSource);
+  }
+
+  /**
+   * How long audit entries are kept. Building it fails if the configured retention is under ninety
+   * days, so the application does not start with a trail that would be cut short.
+   *
+   * @param trail the trail to purge
+   * @param clock the clock
+   * @param properties the control-plane configuration
+   * @return the retention
+   */
+  @Bean
+  public AuditRetention auditRetention(
+      JdbcAuditTrail trail, Clock clock, ControlPlaneProperties properties) {
+    return new AuditRetention(trail, properties.retention().auditRetention(), clock);
+  }
+
+  /**
+   * Records administration changes in the durable trail, so a change that cannot be recorded is not
+   * made.
+   *
+   * @param trail the trail
+   * @return the audit log the administration API uses
+   */
+  @Bean
+  public AdminAuditLog adminAuditLog(JdbcAuditTrail trail) {
+    return new TrailAdminAuditLog(trail);
   }
 }
