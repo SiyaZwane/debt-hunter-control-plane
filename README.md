@@ -123,7 +123,7 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-12 | AI remediation proposals (draft pull requests carrying a proposal document) | Done ([details](docs/ai-remediation.md)) |
 | CP-FR-13 | Work-item lifecycle: one item per fingerprint, transactional outbox, Jira and Azure Boards adapters | Done ([details](docs/work-items.md)) |
 | CP-FR-14 | Digest notifications: one per squad per period, Slack and Teams | Done ([details](docs/digest-notifications.md)) |
-| CP-FR-15 – 16 | Serve layer | Planned |
+| CP-FR-15, 16 | Serve layer: portfolio, squad view, query API, evidence retrieval | Done ([details](docs/serve-layer.md)) |
 | Cross-cutting | Workload-identity scoping, retention tiering, failure isolation | Planned |
 | Release gate | Offline conformance test — the whole control plane down, pipeline still delivers | Planned |
 
@@ -542,3 +542,37 @@ step, rather than waiting for the final release-gate test.
 - **Added to the store:** `TransitionLogRepository.latestSeq()` and `SuppressionRepository.findExpiring`.
 - **Not done:** per-squad cadence and time zones, an admin endpoint for channels, digests for a squad with
   repositories under several owners, and a stuck-hold alert.
+
+## Decisions and known gaps from CP-FR-15 and CP-FR-16
+
+- **Controllers live in `control-plane-serve`, not `control-plane-api`.** `serve` is allowed to depend on the
+  AI module and `api` is not (the build forbids it, directly or transitively), so `api` cannot depend on
+  `serve`. The controllers and the Spring web and security-resource-server dependencies are in `serve`; the
+  security filter chain stays in `api` and the integration tests use both.
+- **Access is enforced in the services.** Every public service method takes a `Caller` and checks the role
+  and squad before reading anything (ArchUnit-enforced). Roles are `ControlPlane.Leader`, `.Squad` and
+  `.Evidence`; squads come from a `squads` claim in the token.
+- **Nothing sets the `squads` claim yet.** It has to be mapped from the identity provider's groups. If you
+  would rather the control plane manage membership, that is a table and an admin endpoint; not built.
+- **Leaders see teams, never repositories.** A leader who wants more needs a squad claim.
+- **The portfolio uses the read models and says when they are stale; the query API and squad view read the
+  system of record** (a finding's current state joined to its latest run), so they are exact. The cost is
+  one lateral join per query; there is no index review under real volume.
+- **Paging is by key cursor**, capped at 200 per page.
+- **Each run now records its policy bundle version** (migration V12 and a small ingest change), so CP-AC-84 can
+  be answered. Runs received before this return `policy.known: false`. Failure reasons are still not
+  retained, so the "recorded outcome" is the status.
+- **The warm tier holds summaries only,** so an old run returns those, marked `WARM`. The detail is gone.
+- **Every evidence request is recorded before anything is released; if the record cannot be written, nothing
+  is.** A purpose is free text of at least 10 characters, stored with the record. A run of another squad
+  returns 404, the same as a run that does not exist; the record keeps the difference. The record has no
+  reader yet: the audit role and the 90-day completeness check (CP-AC-91) belong to the cross-cutting step.
+- **No UI.** Links in tickets and digests would land on JSON. The squad-view link in digests stays switched
+  off until there is something to open.
+- **Evidence is limited to the squads in the token.** An investigator who needs to see other squads' runs
+  needs a squad claim for them; there is no estate-wide evidence role.
+- **A finding's severity and details are those of the latest run that reported it,** including for resolved
+  findings.
+- **Not wired into the application:** no beans or configuration; it joins with the cross-cutting step.
+- **Not done:** the audit reader and role, per-repository thresholds, indexes for the query joins, and an
+  admin endpoint for squad membership.

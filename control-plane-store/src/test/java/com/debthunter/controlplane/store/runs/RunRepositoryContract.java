@@ -187,6 +187,34 @@ abstract class RunRepositoryContract {
   }
 
   @Test
+  void thePolicyBundleVersionARunWasAssessedAgainstIsRetainedAndSurvivesSupersession() {
+    runs.save(
+        new RunRecord(
+            "r1",
+            "acme/widgets",
+            "default",
+            "c1",
+            "0.1.0",
+            "k1",
+            false,
+            false,
+            List.of(),
+            AT,
+            RunStatus.ACTIVE,
+            null,
+            "PASSED",
+            AT,
+            "FULL",
+            "2.3.0"));
+    runs.save(run("r2", "c2", "k2", RunStatus.ACTIVE));
+    runs.save(run("r1b", "c1", "k1", RunStatus.ACTIVE));
+
+    assertThat(runs.find("r1").get().policyBundleVersion()).isEqualTo("2.3.0");
+    assertThat(runs.find("r1").get().status()).isEqualTo(RunStatus.SUPERSEDED);
+    assertThat(runs.find("r2").get().policyBundleVersion()).as("not recorded").isNull();
+  }
+
+  @Test
   void whenARunWasReceivedAndHowMuchHistoryItHadAreRetained() {
     Instant received = Instant.parse("2026-02-02T02:02:02Z");
     runs.save(

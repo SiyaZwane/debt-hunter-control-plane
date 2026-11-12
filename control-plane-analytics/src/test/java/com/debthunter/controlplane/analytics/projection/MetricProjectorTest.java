@@ -364,6 +364,11 @@ class MetricProjectorTest {
     }
 
     @Override
+    public List<RunSnapshot> latestSnapshots(java.util.Collection<String> repositories) {
+      return delegate.latestSnapshots(repositories);
+    }
+
+    @Override
     public List<RunSnapshot> snapshots(String r, String s, Instant a, Instant b) {
       return delegate.snapshots(r, s, a, b);
     }

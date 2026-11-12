@@ -29,6 +29,14 @@ public interface ReadModelRepository {
    */
   void commit(ProjectionBatch batch, Instant now);
 
+  /**
+   * The newest snapshot (by commit date) of every project slice of the given repositories.
+   *
+   * @param repositories the repositories wanted
+   * @return one snapshot per repository and slice that has any
+   */
+  List<RunSnapshot> latestSnapshots(java.util.Collection<String> repositories);
+
   /** Per-commit snapshots in the window, oldest first. */
   List<RunSnapshot> snapshots(String repository, String projectSlice, Instant from, Instant to);
 

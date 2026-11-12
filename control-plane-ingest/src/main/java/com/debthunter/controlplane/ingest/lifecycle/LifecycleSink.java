@@ -170,6 +170,7 @@ public final class LifecycleSink implements PseudonymisedRunSink {
         null,
         bundle.policy().status().name(),
         bundle.provenance().receivedAt(),
-        run.historyDepth().name());
+        run.historyDepth().name(),
+        bundle.policy().bundleVersion());
   }
 }

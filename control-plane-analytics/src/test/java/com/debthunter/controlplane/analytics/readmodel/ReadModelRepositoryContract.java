@@ -215,6 +215,27 @@ abstract class ReadModelRepositoryContract {
   }
 
   @Test
+  void theLatestSnapshotOfEachSliceOfTheWantedRepositoriesIsFoundAndNothingElse() {
+    repo.commit(
+        batch(
+            Map.of(),
+            List.of(),
+            List.of(snapshot("c1", 1, 1), snapshot("c2", 2, 5)),
+            List.of(),
+            List.of(),
+            List.of(),
+            List.of()),
+        day(3));
+
+    assertThat(repo.latestSnapshots(List.of(R)))
+        .extracting(RunSnapshot::commit)
+        .containsExactly("c2");
+    assertThat(repo.latestSnapshots(List.of("other/repo"))).isEmpty();
+    assertThat(repo.latestSnapshots(List.of())).isEmpty();
+    assertThat(repo.latestSnapshots(List.of(R, "other/repo"))).hasSize(1);
+  }
+
+  @Test
   void ruleCountsAreBucketedByWholeUtcDays() {
     RuleDelta d = new RuleDelta(R, S, "rule", LocalDate.of(2026, 1, 3), 1, 0, 0);
     repo.commit(
