@@ -15,6 +15,7 @@ import java.util.Set;
  * @param restrictedByUnknownChoice true if the repository's choice could not be read, so the
  *     restrictive default applied
  * @param at when
+ * @param purpose what the model was asked to do
  */
 public record DispatchRecord(
     String repository,
@@ -23,7 +24,8 @@ public record DispatchRecord(
     String modelVersion,
     boolean sourceIncluded,
     boolean restrictedByUnknownChoice,
-    Instant at) {
+    Instant at,
+    Purpose purpose) {
 
   /** Copies the collections. */
   public DispatchRecord {

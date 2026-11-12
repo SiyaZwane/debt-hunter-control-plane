@@ -177,6 +177,35 @@ public final class InMemoryWorkQueue implements WorkQueue {
   }
 
   @Override
+  public synchronized boolean defer(long id, String worker, Instant notBefore) {
+    Row r = held(id, worker);
+    if (r == null) {
+      return false;
+    }
+    r.status = QueueEntry.Status.PENDING;
+    r.attempts = Math.max(0, r.attempts - 1);
+    r.leaseUntil = null;
+    r.notBefore = notBefore;
+    return true;
+  }
+
+  @Override
+  public synchronized int countStarted(
+      String kind, String key, Instant finishedSince, long excludeId) {
+    int count = 0;
+    for (Row r : rows) {
+      if (r.id == excludeId || !r.kind.equals(kind) || !r.key.equals(key)) {
+        continue;
+      }
+      if (r.status == QueueEntry.Status.IN_PROGRESS
+          || (r.status == QueueEntry.Status.DONE && !r.finishedAt.isBefore(finishedSince))) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  @Override
   public synchronized boolean deadLetter(long id, String worker, String error) {
     Row r = held(id, worker);
     if (r == null) {

@@ -221,6 +221,16 @@ class HousekeepingTest {
     }
 
     @Override
+    public boolean defer(long id, String w, Instant nb) {
+      return delegate.defer(id, w, nb);
+    }
+
+    @Override
+    public int countStarted(String k, String key, Instant since, long exclude) {
+      return delegate.countStarted(k, key, since, exclude);
+    }
+
+    @Override
     public boolean deadLetter(long id, String w, String e) {
       return delegate.deadLetter(id, w, e);
     }
