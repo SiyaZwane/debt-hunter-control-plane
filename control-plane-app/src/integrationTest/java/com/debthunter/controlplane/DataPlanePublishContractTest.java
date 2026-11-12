@@ -60,7 +60,7 @@ class DataPlanePublishContractTest {
         "debthunter.controlplane.security.jwk-set-uri", () -> ISSUER.startJwksServer().toString());
     registry.add("debthunter.controlplane.security.issuer", () -> TestJwtIssuer.ISSUER);
     registry.add("debthunter.controlplane.security.audience", () -> TestJwtIssuer.AUDIENCE);
-    registry.add("debthunter.controlplane.intake.bootstrap-servers", () -> "127.0.0.1:1");
+    registry.add("debthunter.controlplane.intake.encryption-key", () -> AppProperties.INTAKE_KEY);
     registry.add("debthunter.controlplane.intake.listener-enabled", () -> "false");
     PostgresTestDatabase.Connection db = PostgresTestDatabase.freshSchemaConnection();
     registry.add("debthunter.controlplane.database.url", db::jdbcUrl);

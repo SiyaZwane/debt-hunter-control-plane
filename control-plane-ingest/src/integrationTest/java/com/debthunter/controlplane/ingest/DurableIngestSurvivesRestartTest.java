@@ -14,8 +14,9 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * The system of record is the point of CP-FR-05: with real Kafka in front and real PostgreSQL
- * behind, a process that restarts mid-history carries on from where the data says it was.
+ * The system of record is the point of CP-FR-05: with a durable PostgreSQL queue in front and
+ * PostgreSQL behind, a process that restarts mid-history carries on from where the data says it
+ * was.
  */
 @Tag("integration")
 class DurableIngestSurvivesRestartTest {

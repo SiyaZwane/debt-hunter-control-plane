@@ -3,12 +3,20 @@ package com.debthunter.controlplane;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import com.debthunter.controlplane.ingest.intake.IntakeQueue;
 import com.debthunter.controlplane.store.evidence.EvidenceRepository;
 import com.debthunter.controlplane.store.evidence.EvidenceSnapshot;
 import com.debthunter.controlplane.store.evidence.EvidenceStorageService;
 import com.debthunter.controlplane.store.evidence.EvidenceSummary;
 import com.debthunter.controlplane.store.evidence.InMemoryEvidenceRepository;
 import com.debthunter.controlplane.store.findings.PseudonymisedFinding;
+import com.debthunter.controlplane.store.queue.EnqueueResult;
+import com.debthunter.controlplane.store.queue.InMemoryWorkQueue;
+import com.debthunter.controlplane.store.queue.QueueCounts;
+import com.debthunter.controlplane.store.queue.QueueEntry;
+import com.debthunter.controlplane.store.queue.QueuedItem;
+import com.debthunter.controlplane.store.queue.RetryOutcome;
+import com.debthunter.controlplane.store.queue.WorkQueue;
 import com.debthunter.controlplane.store.suppressions.InMemorySuppressionRepository;
 import com.debthunter.controlplane.store.suppressions.SuppressionPreExpiryEvent;
 import com.debthunter.controlplane.store.suppressions.SuppressionRegisterService;
@@ -21,6 +29,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 class HousekeepingTest {
@@ -32,6 +41,13 @@ class HousekeepingTest {
   private final SuppressionRegisterService suppressions =
       new SuppressionRegisterService(new InMemorySuppressionRepository(), warnings::add);
   private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+  private static final Duration DONE = Duration.ofDays(1);
+  private static final Duration DEAD = Duration.ofDays(7);
+  private final WorkQueue queue =
+      new InMemoryWorkQueue(
+          IntakeQueue.policies(
+              3, Duration.ofSeconds(30), Duration.ofSeconds(1), Duration.ofSeconds(4)),
+          clock);
 
   private static PseudonymisedFinding finding() {
     return new PseudonymisedFinding(
@@ -57,7 +73,8 @@ class HousekeepingTest {
     evidence.store("r1", "acme/widgets", List.of(finding()), T0);
     suppressions.suppress("acme/widgets", "fp-a", "why", T0, T0.plus(Duration.ofDays(90)), 90);
 
-    new Housekeeping(evidence, suppressions, clock, Duration.ofHours(1)).runOnce();
+    new Housekeeping(evidence, suppressions, queue, DONE, DEAD, clock, Duration.ofHours(1))
+        .runOnce();
 
     assertThat(evidence.hotFor("r1")).isEmpty();
     assertThat(evidence.warmSummaryFor("acme/widgets")).hasSize(1);
@@ -76,6 +93,9 @@ class HousekeepingTest {
     new Housekeeping(
             new EvidenceStorageService(broken, Duration.ofDays(30)),
             suppressions,
+            queue,
+            DONE,
+            DEAD,
             clock,
             Duration.ofHours(1))
         .runOnce();
@@ -96,7 +116,7 @@ class HousekeepingTest {
             });
     broken.suppress("acme/widgets", "fp-a", "why", T0, T0.plus(Duration.ofDays(90)), 90);
 
-    new Housekeeping(evidence, broken, clock, Duration.ofHours(1)).runOnce();
+    new Housekeeping(evidence, broken, queue, DONE, DEAD, clock, Duration.ofHours(1)).runOnce();
 
     assertThat(evidence.hotFor("r1")).isEmpty();
   }
@@ -114,6 +134,9 @@ class HousekeepingTest {
         new Housekeeping(
             new EvidenceStorageService(counting, Duration.ofDays(30)),
             suppressions,
+            queue,
+            DONE,
+            DEAD,
             clock,
             Duration.ofMillis(20));
 
@@ -135,6 +158,89 @@ class HousekeepingTest {
   }
 
   /** An evidence repository whose expiry sweep is whatever the test says it is. */
+  @Test
+  void aSweepPurgesOldFinishedAndSetAsideQueueItemsButNotRecentOnes() {
+    queue.enqueue(IntakeQueue.KIND, "acme/a", null, new byte[] {1}, null);
+    queue.enqueue(IntakeQueue.KIND, "acme/b", null, new byte[] {2}, null);
+    queue.claim(IntakeQueue.KIND, "w", 10);
+    queue.complete(1, "w");
+    queue.deadLetter(2, "w", "unreadable");
+    // Judge the sweep a week and a bit later: the done item is old, the dead one is just past its
+    // window; a fresh one must survive.
+    Clock later = Clock.fixed(NOW.plus(Duration.ofDays(8)), ZoneOffset.UTC);
+    EvidenceStorageService evidence =
+        new EvidenceStorageService(new InMemoryEvidenceRepository(), Duration.ofDays(30));
+
+    new Housekeeping(evidence, suppressions, queue, DONE, DEAD, later, Duration.ofHours(1))
+        .runOnce();
+
+    assertThat(queue.counts(IntakeQueue.KIND).done()).isZero();
+    assertThat(queue.counts(IntakeQueue.KIND).dead()).isZero();
+  }
+
+  @Test
+  void aFailureToPurgeTheQueueDoesNotStopTheOtherTasks() {
+    EvidenceStorageService evidence =
+        new EvidenceStorageService(new InMemoryEvidenceRepository(), Duration.ofDays(30));
+    evidence.store("r1", "acme/widgets", List.of(finding()), T0);
+    suppressions.suppress("acme/widgets", "fp-a", "why", T0, T0.plus(Duration.ofDays(90)), 90);
+
+    new Housekeeping(
+            evidence, suppressions, new PurgeFails(queue), DONE, DEAD, clock, Duration.ofHours(1))
+        .runOnce();
+
+    assertThat(evidence.hotFor("r1")).isEmpty();
+    assertThat(warnings).hasSize(1);
+  }
+
+  /** A queue that works except that it cannot be purged. */
+  private record PurgeFails(WorkQueue delegate) implements WorkQueue {
+    @Override
+    public EnqueueResult enqueue(String k, String key, String d, byte[] p, Instant nb) {
+      return delegate.enqueue(k, key, d, p, nb);
+    }
+
+    @Override
+    public List<QueuedItem> claim(String k, String w, int max) {
+      return delegate.claim(k, w, max);
+    }
+
+    @Override
+    public boolean complete(long id, String w) {
+      return delegate.complete(id, w);
+    }
+
+    @Override
+    public RetryOutcome retry(long id, String w, String e) {
+      return delegate.retry(id, w, e);
+    }
+
+    @Override
+    public boolean hold(long id, String w, String r) {
+      return delegate.hold(id, w, r);
+    }
+
+    @Override
+    public boolean deadLetter(long id, String w, String e) {
+      return delegate.deadLetter(id, w, e);
+    }
+
+    @Override
+    public int purge(Instant a, Instant b) {
+      throw new IllegalStateException("database down");
+    }
+
+    @Override
+    public Optional<QueueEntry> find(long id) {
+      return delegate.find(id);
+    }
+
+    @Override
+    public QueueCounts counts(String k) {
+      return delegate.counts(k);
+    }
+  }
+
   private record StubEvidenceRepository(java.util.function.IntSupplier sweep)
       implements EvidenceRepository {
 

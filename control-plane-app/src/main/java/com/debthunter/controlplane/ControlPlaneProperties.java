@@ -43,22 +43,40 @@ public record ControlPlaneProperties(
       @DefaultValue("ControlPlane.Admin") String adminRole) {}
 
   /**
-   * The intake queue.
+   * The intake queue, kept in the system of record.
    *
-   * @param bootstrapServers the Kafka cluster's bootstrap addresses
-   * @param topic the intake topic
-   * @param maxWait the longest a publish may block or wait, bounding how long a dead queue can hold
-   *     up a request
-   * @param consumerGroup the consumer group shared by every control-plane instance
-   * @param listenerEnabled whether this instance consumes the queue; turn it off to run the
-   *     ingestion edge alone
+   * @param maxWait the longest the registry lookup or the queue write may take before the caller is
+   *     told to try again; also how long a request is held up by a database that is slow or down
+   * @param listenerEnabled whether this instance works the queue; turn it off to run the ingestion
+   *     edge alone
+   * @param encryptionKey base64, at least 32 bytes. Encrypts each bundle in the queue, because it
+   *     still holds real contributor identities. Required. This is the interim source; the Azure
+   *     Key Vault binding replaces it
+   * @param maxAttempts how many times a bundle that fails for its own reasons is tried before it is
+   *     set aside as dead. A bundle held up by a key store or database outage is never counted
+   * @param lease how long a worker may hold a bundle before it is presumed lost and handed to
+   *     another
+   * @param initialBackoff the wait after a bundle's first failure
+   * @param maxBackoff the longest wait between attempts, and how long a bundle is held while a
+   *     dependency is down
+   * @param batchSize how many bundles a worker takes at a time
+   * @param pollInterval how long a worker waits when the queue is empty
+   * @param doneRetention how long finished items' bookkeeping is kept
+   * @param deadRetention how long a bundle that was set aside is kept (still encrypted) for
+   *     investigation
    */
   public record Intake(
-      @DefaultValue("localhost:9092") String bootstrapServers,
-      @DefaultValue("debt-hunter.run-intake") String topic,
       @DefaultValue("PT3S") Duration maxWait,
-      @DefaultValue("debt-hunter-control-plane") String consumerGroup,
-      @DefaultValue("true") boolean listenerEnabled) {}
+      @DefaultValue("true") boolean listenerEnabled,
+      String encryptionKey,
+      @DefaultValue("10") int maxAttempts,
+      @DefaultValue("PT5M") Duration lease,
+      @DefaultValue("PT1S") Duration initialBackoff,
+      @DefaultValue("PT30S") Duration maxBackoff,
+      @DefaultValue("20") int batchSize,
+      @DefaultValue("PT0.5S") Duration pollInterval,
+      @DefaultValue("P1D") Duration doneRetention,
+      @DefaultValue("P7D") Duration deadRetention) {}
 
   /**
    * The per-pipeline publish rate limit.
@@ -76,9 +94,17 @@ public record ControlPlaneProperties(
    * @param username the database user
    * @param password the database password
    * @param maxPoolSize the most connections the pool may open
+   * @param connectionTimeout how long a caller waits for a connection from the pool before failing
+   * @param socketTimeout how long a database call may wait for the server before it fails, so a
+   *     database that stops answering cannot hold a thread for ever
    */
   public record Database(
-      String url, String username, String password, @DefaultValue("10") int maxPoolSize) {}
+      String url,
+      String username,
+      String password,
+      @DefaultValue("10") int maxPoolSize,
+      @DefaultValue("PT3S") Duration connectionTimeout,
+      @DefaultValue("PT30S") Duration socketTimeout) {}
 
   /**
    * The pseudonymisation key. Required: nothing is processed without it.

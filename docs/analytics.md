@@ -28,7 +28,7 @@ run's findings, and writes only to the read models. This is enforced, not just i
 - in the running application it is scheduled on its own daemon thread, absorbs its own failures, and
   shares no lock with ingest.
 
-**CP-AC-32** is proven against the whole application with real Kafka and PostgreSQL: with the
+**CP-AC-32** is proven against the whole application with the real durable queue and PostgreSQL: with the
 projector failing on every pass, hanging forever, or stopped, publishing still ingests, and the only
 effect is that query results report themselves stale.
 

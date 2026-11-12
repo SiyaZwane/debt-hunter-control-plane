@@ -3,16 +3,14 @@ package com.debthunter.controlplane.ingest;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import com.debthunter.controlplane.ingest.intake.DurableIntakeWorker;
+import com.debthunter.controlplane.ingest.intake.DurableRunIntakePublisher;
 import com.debthunter.controlplane.ingest.intake.IntakeEnvelopes;
-import com.debthunter.controlplane.ingest.intake.KafkaIntakeListener;
-import com.debthunter.controlplane.ingest.intake.KafkaRunIntakeQueuePublisher;
 import com.debthunter.controlplane.ingest.receive.Handlers;
 import com.debthunter.controlplane.ingest.receive.InMemoryRunBundleDeduplicator;
 import com.debthunter.controlplane.ingest.receive.RunBundleReceiver;
-import com.debthunter.controlplane.testkit.KafkaTestBroker;
 import java.time.Duration;
 import java.util.List;
-import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
@@ -27,22 +25,18 @@ class CpBc02_DuplicateBundleDeduplicatedTest {
 
   @Test
   void cpBc02_aBundleDeliveredTwiceIsProcessedOnce() throws Exception {
-    String bootstrap = KafkaTestBroker.bootstrapServers();
-    String topic = KafkaTopics.create(bootstrap);
+    var queue = IntakeTestQueue.inMemory();
     List<String> processed = new CopyOnWriteArrayList<>();
     RunBundleReceiver receiver =
         new RunBundleReceiver(
             new InMemoryRunBundleDeduplicator(100),
             Handlers.processing(envelope -> processed.add(envelope.runId())));
 
-    try (KafkaRunIntakeQueuePublisher publisher =
-            KafkaRunIntakeQueuePublisher.connect(bootstrap, topic, Duration.ofSeconds(10));
-        KafkaIntakeListener listener =
-            KafkaIntakeListener.connect(bootstrap, "group-" + UUID.randomUUID(), topic, receiver)) {
-      listener.start();
+    DurableRunIntakePublisher publisher = IntakeTestQueue.publisher(queue);
+    try (DurableIntakeWorker worker = IntakeTestQueue.startedWorker(queue, receiver)) {
 
       // The same run, published twice (a pipeline retry), then a sentinel. All three share one
-      // repository key and so one partition, which keeps their order: once the sentinel has been
+      // repository, and the queue is ordered per repository: once the sentinel has been
       // processed, the duplicate ahead of it has certainly been consumed too.
       publisher
           .publish(IntakeEnvelopes.forRun("run-1"))

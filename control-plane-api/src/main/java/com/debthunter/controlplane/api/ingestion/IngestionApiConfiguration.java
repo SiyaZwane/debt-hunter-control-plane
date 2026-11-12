@@ -51,6 +51,8 @@ public class IngestionApiConfiguration {
    * @param alerts told when a caller steps outside its scope
    * @param rateLimiter limits how fast one caller may publish
    * @param clock stamps accepted bundles
+   * @param blockingWait the longest the registry lookup or the queue write may take, as an ISO-8601
+   *     duration (for example {@code PT3S})
    * @return the controller
    */
   @Bean
@@ -60,9 +62,16 @@ public class IngestionApiConfiguration {
       RunIntakeQueuePublisher queue,
       SecurityAlertPublisher alerts,
       RequestRateLimiter rateLimiter,
-      Clock clock) {
+      Clock clock,
+      @Value("${debthunter.controlplane.intake.max-wait:PT3S}") String blockingWait) {
     return new IngestionController(
-        schemaValidator, workloadValidator, queue, alerts, rateLimiter, clock);
+        schemaValidator,
+        workloadValidator,
+        queue,
+        alerts,
+        rateLimiter,
+        clock,
+        java.time.Duration.parse(blockingWait));
   }
 
   /**

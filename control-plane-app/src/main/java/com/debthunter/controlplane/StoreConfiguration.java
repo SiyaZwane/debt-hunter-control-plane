@@ -65,6 +65,12 @@ public class StoreConfiguration {
     config.setPassword(database.password());
     config.setMaximumPoolSize(database.maxPoolSize());
     config.setPoolName("control-plane");
+    // A database that stops answering must become a failure in bounded time, not a held thread.
+    config.setConnectionTimeout(database.connectionTimeout().toMillis());
+    config.addDataSourceProperty(
+        "socketTimeout", String.valueOf(database.socketTimeout().toSeconds()));
+    config.addDataSourceProperty(
+        "connectTimeout", String.valueOf(Math.max(1, database.connectionTimeout().toSeconds())));
     HikariDataSource dataSource = new HikariDataSource(config);
     int applied = StoreMigrations.migrate(dataSource);
     log.info("system of record ready, {} migration(s) applied", applied);

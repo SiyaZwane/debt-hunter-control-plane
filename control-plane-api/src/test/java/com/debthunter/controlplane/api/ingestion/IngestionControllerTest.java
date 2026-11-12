@@ -6,8 +6,12 @@ import com.debthunter.controlplane.egress.alert.SecurityAlert;
 import com.debthunter.controlplane.egress.alert.SecurityAlertType;
 import com.debthunter.controlplane.ingest.intake.IntakeEnvelope;
 import com.debthunter.controlplane.ingest.intake.QueueUnavailableException;
+import com.debthunter.controlplane.ingest.intake.RunIntakeQueuePublisher;
+import com.debthunter.controlplane.store.jdbc.StoreException;
 import com.debthunter.controlplane.store.registry.InMemoryRepositoryScopeLookup;
+import com.debthunter.controlplane.store.registry.RepositoryScopeLookup;
 import com.debthunter.controlplane.testkit.RunBundleFixtures;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -252,20 +256,147 @@ class IngestionControllerTest {
     post(client(null), RunBundleFixtures.validV1()).expectStatus().isUnauthorized();
   }
 
+  // ---- the database being unavailable ----------------------------------------------------------
+
+  private static final Duration SHORT = Duration.ofMillis(300);
+
+  private WebTestClient withScopes(RepositoryScopeLookup scopes) {
+    return client(IDENTITY, key -> RateLimitDecision.permit(), scopes, queue, SHORT);
+  }
+
+  @Test
+  void anUnreachableRegistryIsAPrompt503NotAServerError() {
+    RepositoryScopeLookup down =
+        (identity, repository) -> {
+          throw new StoreException("database unreachable", null);
+        };
+
+    post(withScopes(down), RunBundleFixtures.validV1())
+        .expectStatus()
+        .isEqualTo(503)
+        .expectHeader()
+        .exists("Retry-After")
+        .expectBody()
+        .jsonPath("$.error")
+        .isEqualTo("registry_unavailable");
+    assertThat(queue.published()).isEmpty();
+    assertThat(alerts.alerts()).as("an outage is not a scope violation").isEmpty();
+  }
+
+  @Test
+  void aRegistryFailureWrappedInsideAnotherExceptionIsStillA503() {
+    RepositoryScopeLookup down =
+        (identity, repository) -> {
+          throw new IllegalStateException("lookup failed", new StoreException("db", null));
+        };
+
+    post(withScopes(down), RunBundleFixtures.validV1()).expectStatus().isEqualTo(503);
+  }
+
+  @Test
+  void aRegistryThatHangsIsA503WithinTheBoundNotAHang() {
+    RepositoryScopeLookup hanging =
+        (identity, repository) -> {
+          try {
+            Thread.sleep(5_000);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+          return true;
+        };
+    long started = System.nanoTime();
+
+    post(withScopes(hanging), RunBundleFixtures.validV1())
+        .expectStatus()
+        .isEqualTo(503)
+        .expectBody()
+        .jsonPath("$.error")
+        .isEqualTo("registry_unavailable");
+
+    assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(3));
+  }
+
+  @Test
+  void anUnexpectedBugInTheScopeLookupIsStillAnInternalError() {
+    RepositoryScopeLookup buggy =
+        (identity, repository) -> {
+          throw new IllegalStateException("a bug, not an outage");
+        };
+
+    post(withScopes(buggy), RunBundleFixtures.validV1())
+        .expectStatus()
+        .isEqualTo(500)
+        .expectBody()
+        .jsonPath("$.error")
+        .isEqualTo("internal_error");
+  }
+
+  @Test
+  void theRegistryIsReadOffTheCallingThread() {
+    java.util.concurrent.atomic.AtomicReference<String> thread =
+        new java.util.concurrent.atomic.AtomicReference<>();
+    RepositoryScopeLookup recording =
+        (identity, repository) -> {
+          thread.set(Thread.currentThread().getName());
+          return true;
+        };
+    String caller = Thread.currentThread().getName();
+
+    post(withScopes(recording), RunBundleFixtures.validV1()).expectStatus().isAccepted();
+
+    assertThat(thread.get()).isNotEqualTo(caller).contains("boundedElastic");
+  }
+
+  @Test
+  void aQueueWriteThatNeverFinishesIsA503WithinTheBound() {
+    RunIntakeQueuePublisher stuck = envelope -> new java.util.concurrent.CompletableFuture<>();
+    long started = System.nanoTime();
+
+    post(
+            client(
+                IDENTITY,
+                key -> RateLimitDecision.permit(),
+                new InMemoryRepositoryScopeLookup(Map.of(IDENTITY, List.of("acme/widgets"))),
+                stuck,
+                SHORT),
+            RunBundleFixtures.validV1())
+        .expectStatus()
+        .isEqualTo(503)
+        .expectBody()
+        .jsonPath("$.error")
+        .isEqualTo("intake_unavailable");
+
+    assertThat(Duration.ofNanos(System.nanoTime() - started)).isLessThan(Duration.ofSeconds(3));
+  }
+
   private WebTestClient client(String identity) {
     return client(identity, key -> RateLimitDecision.permit());
   }
 
   private WebTestClient client(String identity, RequestRateLimiter rateLimiter) {
+    return client(
+        identity,
+        rateLimiter,
+        new InMemoryRepositoryScopeLookup(Map.of(IDENTITY, List.of("acme/widgets"))),
+        queue,
+        Duration.ofSeconds(3));
+  }
+
+  private WebTestClient client(
+      String identity,
+      RequestRateLimiter rateLimiter,
+      RepositoryScopeLookup scopes,
+      RunIntakeQueuePublisher publisher,
+      Duration wait) {
     IngestionController controller =
         new IngestionController(
             RunBundleSchemaValidator.withClasspathSchemas(1),
-            new WorkloadIdentityValidator(
-                new InMemoryRepositoryScopeLookup(Map.of(IDENTITY, List.of("acme/widgets")))),
-            queue,
+            new WorkloadIdentityValidator(scopes),
+            publisher,
             alerts,
             rateLimiter,
-            clock);
+            clock,
+            wait);
     WebFilter authenticate =
         (exchange, chain) ->
             chain.filter(

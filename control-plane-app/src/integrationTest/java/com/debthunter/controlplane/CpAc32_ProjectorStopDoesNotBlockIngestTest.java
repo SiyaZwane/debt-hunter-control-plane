@@ -17,7 +17,6 @@ import com.debthunter.controlplane.store.lifecycle.FindingStateRepository;
 import com.debthunter.controlplane.store.registry.OnboardedRepository;
 import com.debthunter.controlplane.store.registry.RepositoryRegistryService;
 import com.debthunter.controlplane.store.registry.WorkItemRoute;
-import com.debthunter.controlplane.testkit.KafkaTestBroker;
 import com.debthunter.controlplane.testkit.PostgresTestDatabase;
 import com.debthunter.controlplane.testkit.RunBundleBuilder;
 import com.debthunter.controlplane.testkit.TestJwtIssuer;
@@ -25,7 +24,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterAll;
@@ -141,6 +139,7 @@ class CpAc32_ProjectorStopDoesNotBlockIngestTest {
 
   @DynamicPropertySource
   static void configure(DynamicPropertyRegistry registry) {
+    registry.add("debthunter.controlplane.intake.encryption-key", () -> AppProperties.INTAKE_KEY);
     PostgresTestDatabase.Connection db = PostgresTestDatabase.freshSchemaConnection();
     registry.add(
         "debthunter.controlplane.security.jwk-set-uri", () -> ISSUER.startJwksServer().toString());
@@ -150,11 +149,6 @@ class CpAc32_ProjectorStopDoesNotBlockIngestTest {
     registry.add("debthunter.controlplane.database.username", db::username);
     registry.add("debthunter.controlplane.database.password", db::password);
     registry.add("debthunter.controlplane.pseudonym.key", () -> AppProperties.PSEUDONYM_KEY);
-    registry.add(
-        "debthunter.controlplane.intake.bootstrap-servers", KafkaTestBroker::bootstrapServers);
-    registry.add("debthunter.controlplane.intake.topic", () -> "cp32-" + UUID.randomUUID());
-    registry.add(
-        "debthunter.controlplane.intake.consumer-group", () -> "cp32-" + UUID.randomUUID());
     registry.add("debthunter.controlplane.analytics.projection-interval", () -> "PT0.2S");
     registry.add("debthunter.controlplane.analytics.stale-after", () -> "PT2S");
   }

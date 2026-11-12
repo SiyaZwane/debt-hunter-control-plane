@@ -47,6 +47,8 @@ public class IngestionController {
   /** Where bundles are published. */
   public static final String PATH = "/api/v1/runs";
 
+  private static final Duration DEFAULT_WAIT = Duration.ofSeconds(3);
+
   private static final Logger log = LoggerFactory.getLogger(IngestionController.class);
 
   /**
@@ -61,6 +63,7 @@ public class IngestionController {
   private final SecurityAlertPublisher alerts;
   private final RequestRateLimiter rateLimiter;
   private final Clock clock;
+  private final Duration blockingWait;
 
   /**
    * Creates the controller.
@@ -72,6 +75,28 @@ public class IngestionController {
    * @param rateLimiter limits how fast one caller may publish
    * @param clock stamps accepted bundles
    */
+  public IngestionController(
+      RunBundleSchemaValidator schemaValidator,
+      WorkloadIdentityValidator workloadValidator,
+      RunIntakeQueuePublisher queue,
+      SecurityAlertPublisher alerts,
+      RequestRateLimiter rateLimiter,
+      Clock clock) {
+    this(schemaValidator, workloadValidator, queue, alerts, rateLimiter, clock, DEFAULT_WAIT);
+  }
+
+  /**
+   * Creates the controller.
+   *
+   * @param schemaValidator checks a bundle against the accepted schema versions
+   * @param workloadValidator checks the caller's scope against the declared repository
+   * @param queue where accepted bundles go
+   * @param alerts told when a caller steps outside its scope
+   * @param rateLimiter limits how fast one caller may publish
+   * @param clock stamps accepted bundles
+   * @param blockingWait the longest the registry lookup or the queue write may take before the
+   *     caller is told to try again later
+   */
   @edu.umd.cs.findbugs.annotations.SuppressFBWarnings(
       value = "EI_EXPOSE_REP2",
       justification = "collaborators are shared services, held by reference intentionally")
@@ -81,7 +106,9 @@ public class IngestionController {
       RunIntakeQueuePublisher queue,
       SecurityAlertPublisher alerts,
       RequestRateLimiter rateLimiter,
-      Clock clock) {
+      Clock clock,
+      Duration blockingWait) {
+    this.blockingWait = blockingWait;
     this.schemaValidator = schemaValidator;
     this.workloadValidator = workloadValidator;
     this.queue = queue;
@@ -150,7 +177,23 @@ public class IngestionController {
           schemaError(List.of(new SchemaViolation("$.run.repository", "is required")), 1));
     }
 
-    ScopeDecision scope = workloadValidator.validate(identity, repository);
+    // The scope check reads the registry in the database, which blocks. It must not run on an
+    // event-loop thread, and it must not hold the caller up for longer than the wait: a slow or
+    // unreachable database becomes a prompt 503 the pipeline can shrug off, never a hang.
+    return Mono.fromCallable(() -> workloadValidator.validate(identity, repository))
+        .subscribeOn(Schedulers.boundedElastic())
+        .timeout(blockingWait)
+        .flatMap(scope -> afterScope(scope, identity, repository, root, bytes))
+        .onErrorResume(
+            ScopeLookupFailure::isDependencyFailure,
+            failure -> {
+              log.warn("repository registry unavailable workloadIdentity={}", identity, failure);
+              return Mono.just(registryUnavailable());
+            });
+  }
+
+  private Mono<ResponseEntity<Object>> afterScope(
+      ScopeDecision scope, String identity, String repository, JsonNode root, byte[] bytes) {
     if (!scope.allowed()) {
       log.warn("workload scope violation workloadIdentity={} reason={}", identity, scope.reason());
       raiseScopeAlert(identity, repository);
@@ -189,9 +232,12 @@ public class IngestionController {
     // an event-loop thread.
     return Mono.fromFuture(() -> queue.publish(envelope).toCompletableFuture())
         .subscribeOn(Schedulers.boundedElastic())
+        .timeout(blockingWait)
         .then(Mono.fromSupplier(() -> accepted(envelope)))
         .onErrorResume(
-            QueueUnavailableException.class,
+            failure ->
+                failure instanceof QueueUnavailableException
+                    || failure instanceof java.util.concurrent.TimeoutException,
             failure -> {
               log.warn(
                   "intake queue unavailable correlationId={}", envelope.correlationId(), failure);
@@ -244,6 +290,16 @@ public class IngestionController {
                 "Schema version " + unsupported.declared() + " is " + unsupported.reason(),
                 null,
                 unsupported.supportedMajors()));
+  }
+
+  private static ResponseEntity<Object> registryUnavailable() {
+    return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+        .header("Retry-After", "30")
+        .contentType(MediaType.APPLICATION_JSON)
+        .body(
+            ApiError.of(
+                "registry_unavailable",
+                "The bundle could not be checked right now; try again later"));
   }
 
   private static ResponseEntity<Object> queueUnavailable() {

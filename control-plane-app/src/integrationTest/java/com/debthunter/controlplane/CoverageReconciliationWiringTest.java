@@ -13,13 +13,11 @@ import com.debthunter.controlplane.store.registry.RepositoryRegistryService;
 import com.debthunter.controlplane.store.registry.WorkItemRoute;
 import com.debthunter.controlplane.testkit.FakeEstateServer;
 import com.debthunter.controlplane.testkit.FakeEstateServer.Response;
-import com.debthunter.controlplane.testkit.KafkaTestBroker;
 import com.debthunter.controlplane.testkit.PostgresTestDatabase;
 import com.debthunter.controlplane.testkit.RunBundleBuilder;
 import com.debthunter.controlplane.testkit.TestJwtIssuer;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -45,6 +43,7 @@ class CoverageReconciliationWiringTest {
 
   @DynamicPropertySource
   static void configure(DynamicPropertyRegistry registry) {
+    registry.add("debthunter.controlplane.intake.encryption-key", () -> AppProperties.INTAKE_KEY);
     PostgresTestDatabase.Connection db = PostgresTestDatabase.freshSchemaConnection();
     registry.add(
         "debthunter.controlplane.security.jwk-set-uri", () -> ISSUER.startJwksServer().toString());
@@ -54,10 +53,6 @@ class CoverageReconciliationWiringTest {
     registry.add("debthunter.controlplane.database.username", db::username);
     registry.add("debthunter.controlplane.database.password", db::password);
     registry.add("debthunter.controlplane.pseudonym.key", () -> AppProperties.PSEUDONYM_KEY);
-    registry.add(
-        "debthunter.controlplane.intake.bootstrap-servers", KafkaTestBroker::bootstrapServers);
-    registry.add("debthunter.controlplane.intake.topic", () -> "cov-" + UUID.randomUUID());
-    registry.add("debthunter.controlplane.intake.consumer-group", () -> "cov-" + UUID.randomUUID());
     registry.add("debthunter.controlplane.analytics.coverage.estate.provider", () -> "github");
     registry.add("debthunter.controlplane.analytics.coverage.estate.organization", () -> "acme");
     registry.add("debthunter.controlplane.analytics.coverage.estate.token", () -> TOKEN);
