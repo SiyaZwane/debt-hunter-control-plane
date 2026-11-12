@@ -11,7 +11,7 @@ public final class InMemoryPseudonymDirectory implements PseudonymDirectory {
 
   @Override
   public void remember(Pseudonym pseudonym, String identity) {
-    identities.put(pseudonym, identity);
+    identities.putIfAbsent(pseudonym, identity);
   }
 
   @Override

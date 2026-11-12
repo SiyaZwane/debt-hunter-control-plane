@@ -31,6 +31,7 @@ HTTP POST /api/v1/runs ──► security ──► rate limit ──► parse �
 | token verification (`jwk-set-uri`, `issuer`, `audience`) | will not start |
 | `database.url`, or the database cannot be reached or migrated | will not start |
 | `pseudonym.key` absent, not base64, or under 32 bytes | will not start |
+| `pseudonym.directory-key` absent, not base64, under 32 bytes, or equal to the pseudonym or intake key | will not start |
 
 The schema is migrated (Flyway) before anything else uses the database.
 
@@ -44,6 +45,7 @@ The schema is migrated (Flyway) before anything else uses the database.
 | `database.max-pool-size` | | `10` |
 | `database.connection-timeout` / `.socket-timeout` | | `PT3S` / `PT30S` |
 | `pseudonym.key` | `CONTROL_PLANE_PSEUDONYM_KEY` | **required**, base64, ≥ 32 bytes |
+| `pseudonym.directory-key` | `CONTROL_PLANE_PSEUDONYM_DIRECTORY_KEY` | **required**, base64, ≥ 32 bytes, different from the other keys |
 | `intake.encryption-key` | `CONTROL_PLANE_INTAKE_KEY` | **required**, base64, ≥ 32 bytes |
 | `intake.listener-enabled` | | `true` |
 | `intake.max-wait` | | `PT3S` |
@@ -63,8 +65,9 @@ needed.
 
 - **The pseudonym key comes from configuration**, the interim source. The Key Vault adapter is
   written against a port (`KeyVaultSecretReader`) but the Azure SDK binding is not.
-- **The pseudonym directory is in memory**, so it is lost on restart and re-identification works only
-  for contributors seen since. A durable, encrypted, access-restricted directory is needed.
+- **The pseudonym directory is in PostgreSQL**, each identity sealed (AES-256-GCM) under
+  `pseudonym.directory-key`. Losing or changing that key makes every stored identity unreadable
+  (reads then fail loudly, they do not look like unknown pseudonyms), so back it up apart from the database.
 - **There is no commit-graph source.** A bundle carries its commit id but not parents or commit date,
   so every commit is "unknown": runs apply in arrival order and the run timestamp stands in for the
   commit date. Out-of-order protection is therefore inactive in a real deployment until a source (the

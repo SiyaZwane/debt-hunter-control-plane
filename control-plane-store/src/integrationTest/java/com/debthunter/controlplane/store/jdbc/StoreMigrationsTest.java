@@ -19,7 +19,7 @@ class StoreMigrationsTest {
   }
 
   @Test
-  void theSchemaHasNoPlaceToPutAContributorIdentity() {
+  void apartFromThePseudonymDirectoryTheSchemaHasNoPlaceToPutAContributorIdentity() {
     DataSource dataSource = PostgresTestDatabase.freshSchema();
     StoreMigrations.migrate(dataSource);
 
@@ -27,7 +27,7 @@ class StoreMigrationsTest {
         new Jdbc(dataSource)
             .query(
                 "SELECT column_name FROM information_schema.columns WHERE table_schema ="
-                    + " current_schema()",
+                    + " current_schema() AND table_name <> 'pseudonym_directory'",
                 row -> row.getString("column_name").toLowerCase());
 
     assertThat(columns)
@@ -39,17 +39,26 @@ class StoreMigrationsTest {
   }
 
   @Test
-  void thePseudonymDirectoryIsNotInThisSchema() {
+  void theOnlyTableNamedForPseudonymsIsTheDirectoryAndItHoldsIdentitiesOnlyAsSealedBytes() {
     DataSource dataSource = PostgresTestDatabase.freshSchema();
     StoreMigrations.migrate(dataSource);
+    Jdbc jdbc = new Jdbc(dataSource);
 
     var tables =
-        new Jdbc(dataSource)
-            .query(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema ="
-                    + " current_schema()",
-                row -> row.getString("table_name"));
+        jdbc.query(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema ="
+                + " current_schema()",
+            row -> row.getString("table_name"));
+    var identityColumns =
+        jdbc.query(
+            "SELECT column_name || ':' || data_type AS c FROM information_schema.columns WHERE"
+                + " table_schema = current_schema() AND table_name = 'pseudonym_directory'"
+                + " AND (column_name LIKE '%identity%' OR column_name LIKE '%email%')",
+            row -> row.getString("c"));
 
-    assertThat(tables).noneMatch(t -> t.contains("pseudonym") || t.contains("directory"));
+    assertThat(tables)
+        .filteredOn(t -> t.contains("pseudonym") || t.contains("directory"))
+        .containsExactly("pseudonym_directory");
+    assertThat(identityColumns).containsExactly("sealed_identity:bytea");
   }
 }

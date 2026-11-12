@@ -78,6 +78,53 @@ class ControlPlaneApplicationSmokeTest {
   }
 
   @Test
+  void theApplicationRefusesToStartWithoutAPseudonymDirectoryKey() {
+    assertRefusesToStart(
+        AppProperties.valid(ISSUER).without("debthunter.controlplane.pseudonym.directory-key"),
+        "The pseudonym directory key is not configured");
+  }
+
+  @Test
+  void theApplicationRefusesToStartWithAPseudonymDirectoryKeyThatIsTooShort() {
+    assertRefusesToStart(
+        AppProperties.valid(ISSUER)
+            .with("debthunter.controlplane.pseudonym.directory-key", "c2hvcnQ="), // "short"
+        "at least 32 bytes");
+  }
+
+  @Test
+  void theDirectoryKeyMayNotBeReusedFromAnotherKey() {
+    assertRefusesToStart(
+        AppProperties.valid(ISSUER)
+            .with("debthunter.controlplane.pseudonym.directory-key", AppProperties.PSEUDONYM_KEY),
+        "must differ");
+    assertRefusesToStart(
+        AppProperties.valid(ISSUER)
+            .with("debthunter.controlplane.pseudonym.directory-key", AppProperties.INTAKE_KEY),
+        "must differ");
+  }
+
+  @Test
+  void theDirectoryIsInTheDatabaseSoWhatItHoldsSurvivesARestart() {
+    AppProperties properties = AppProperties.valid(ISSUER);
+    com.debthunter.controlplane.store.identity.Pseudonym alice =
+        com.debthunter.controlplane.store.identity.Pseudonym.fromStored("a".repeat(64));
+
+    try (ConfigurableApplicationContext first = start(properties)) {
+      first
+          .getBean(com.debthunter.controlplane.store.identity.PseudonymDirectory.class)
+          .remember(alice, "alice@example.com");
+    }
+    try (ConfigurableApplicationContext second = start(properties)) {
+      assertThat(
+              second
+                  .getBean(com.debthunter.controlplane.store.identity.PseudonymDirectory.class)
+                  .lookup(alice))
+          .contains("alice@example.com");
+    }
+  }
+
+  @Test
   void theApplicationRefusesToStartIfTheDatabaseCannotBeReached() {
     assertThatThrownBy(
             () ->

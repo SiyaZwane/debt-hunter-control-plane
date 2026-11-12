@@ -69,16 +69,17 @@ second log line. `LoggingReIdentificationAuditLog` writes to the dedicated logge
 - **`KeyVaultPseudonymKeyStore` is tested against a fake, not Azure.** It reads a base64 secret
   through a one-method port, `KeyVaultSecretReader`. The binding to the Azure SDK, and a real-vault
   test tagged `platform`, need credentials and are not written.
-- **No production `PseudonymDirectory`.** The in-memory one is for tests. A real one must encrypt at
-  rest, be readable only by `ReIdentificationService`, and be excluded from every export and backup
-  (CP-AC-90).
-- **CP-AC-11 (no dashboard response contains identity) is deferred** to the serve layer
-  (CP-FR-15), which does not exist yet. The structural guarantee underneath it, that the store holds
-  no identity to leak, is what CP-AC-09 proves.
+- **The directory is persistent but not isolated.** `JdbcPseudonymDirectory` keeps identities sealed in the
+  same PostgreSQL schema, under a key of its own, and architecture rules confine access to the pseudonymiser
+  and the audited service. A separate database with its own credentials would be stronger; it is not done.
+  It is also **not excluded from database backups** (the identities are sealed, so a backup is only useful
+  with the key), and **pseudonyms issued before it existed are gone**: they re-appear as those contributors
+  show up in new runs.
+- **CP-AC-11 is proved** over every read route by `CpAc11_NoDashboardResponseContainsIdentityTest`.
 - **CP-AC-12 is a guard, not yet a proof.** The API today is the ingestion edge alone, so the test
   asserts no key-store or directory route exists. It should grow into a sweep of every route the
   query API registers.
 - **Free text is not scanned.** `message` and `path` are carried as-is; they are engine-generated,
   but nothing here would catch a path like `/home/jdoe/...`.
-- The pseudonym directory is **in memory in the running application** (lost on restart), and the key
-  comes from configuration rather than Key Vault. See [running](running.md#known-limits-of-the-wiring).
+- The pseudonym key and the directory key come from configuration rather than Key Vault. See
+  [running](running.md#known-limits-of-the-wiring).

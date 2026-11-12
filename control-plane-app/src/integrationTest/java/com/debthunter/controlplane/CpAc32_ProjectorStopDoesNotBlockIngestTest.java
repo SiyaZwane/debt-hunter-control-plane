@@ -154,6 +154,8 @@ class CpAc32_ProjectorStopDoesNotBlockIngestTest {
     registry.add("debthunter.controlplane.database.username", db::username);
     registry.add("debthunter.controlplane.database.password", db::password);
     registry.add("debthunter.controlplane.pseudonym.key", () -> AppProperties.PSEUDONYM_KEY);
+    registry.add(
+        "debthunter.controlplane.pseudonym.directory-key", () -> AppProperties.DIRECTORY_KEY);
     registry.add("debthunter.controlplane.analytics.projection-interval", () -> "PT0.2S");
     registry.add("debthunter.controlplane.analytics.stale-after", () -> "PT2S");
   }
