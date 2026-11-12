@@ -175,6 +175,36 @@ public final class JdbcReadModelRepository implements ReadModelRepository {
   }
 
   @Override
+  public List<RunSnapshot> latestSnapshots(java.util.Collection<String> repositories) {
+    if (repositories.isEmpty()) {
+      return List.of();
+    }
+    String marks = String.join(",", java.util.Collections.nCopies(repositories.size(), "?"));
+    return jdbc.query(
+        "SELECT DISTINCT ON (repository, project_slice) repository, project_slice, commit_id,"
+            + " run_id, committed_at, critical, high, medium, low, info, architecture_violations,"
+            + " complexity_delta, policy_status FROM rm_run_snapshot WHERE repository IN ("
+            + marks
+            + ") ORDER BY repository, project_slice, committed_at DESC, commit_id",
+        row ->
+            new RunSnapshot(
+                row.getString("repository"),
+                row.getString("project_slice"),
+                row.getString("commit_id"),
+                row.getString("run_id"),
+                Jdbc.instant(row, "committed_at"),
+                row.getInt("critical"),
+                row.getInt("high"),
+                row.getInt("medium"),
+                row.getInt("low"),
+                row.getInt("info"),
+                row.getInt("architecture_violations"),
+                row.getDouble("complexity_delta"),
+                row.getString("policy_status")),
+        repositories.toArray());
+  }
+
+  @Override
   public List<RunSnapshot> snapshots(
       String repository, String projectSlice, Instant from, Instant to) {
     return jdbc.query(

@@ -76,6 +76,28 @@ public final class TestJwtIssuer implements AutoCloseable {
   }
 
   /**
+   * Signs a valid token for a person or client that holds roles and belongs to squads.
+   *
+   * @param subject the {@code sub} claim
+   * @param roles the {@code roles} claim values
+   * @param squads the {@code squads} claim values
+   * @return the compact serialised token
+   */
+  public String tokenWithRolesAndSquads(
+      String subject, java.util.List<String> roles, java.util.List<String> squads) {
+    return sign(
+        new JWTClaimsSet.Builder()
+            .subject(subject)
+            .issuer(ISSUER)
+            .audience(AUDIENCE)
+            .issueTime(Date.from(Instant.now().minus(Duration.ofMinutes(1))))
+            .expirationTime(Date.from(Instant.now().plus(Duration.ofHours(1))))
+            .claim("roles", roles)
+            .claim("squads", squads)
+            .build());
+  }
+
+  /**
    * Signs a token with explicit claims, for negative-path tests.
    *
    * @param subject the {@code sub} claim

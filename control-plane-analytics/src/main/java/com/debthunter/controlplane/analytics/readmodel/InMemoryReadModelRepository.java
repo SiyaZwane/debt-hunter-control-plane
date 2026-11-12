@@ -89,6 +89,23 @@ public final class InMemoryReadModelRepository implements ReadModelRepository {
   }
 
   @Override
+  public synchronized List<RunSnapshot> latestSnapshots(java.util.Collection<String> repositories) {
+    java.util.Map<String, RunSnapshot> latest = new java.util.HashMap<>();
+    for (RunSnapshot s : snapshots.values()) {
+      if (repositories.contains(s.repository())) {
+        latest.merge(
+            sliceKey(s.repository(), s.projectSlice()),
+            s,
+            (a, b) -> b.committedAt().isAfter(a.committedAt()) ? b : a);
+      }
+    }
+    return latest.values().stream()
+        .sorted(
+            Comparator.comparing(RunSnapshot::repository).thenComparing(RunSnapshot::projectSlice))
+        .toList();
+  }
+
+  @Override
   public synchronized List<RunSnapshot> snapshots(
       String repository, String projectSlice, Instant from, Instant to) {
     return snapshots.values().stream()

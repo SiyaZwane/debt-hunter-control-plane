@@ -11,7 +11,7 @@ public final class JdbcRunRepository implements RunRepository {
   private static final String COLUMNS =
       "run_id, repository, project_slice, commit_id, tool_version, composite_key, degraded,"
           + " scope_limited, committed_at, status, superseded_by, policy_status, received_at,"
-          + " history_depth";
+          + " history_depth, policy_bundle_version";
 
   private final Jdbc jdbc;
 
@@ -102,8 +102,8 @@ public final class JdbcRunRepository implements RunRepository {
           s.update(
               "INSERT INTO run (run_id, repository, project_slice, commit_id, tool_version,"
                   + " composite_key, degraded, scope_limited, committed_at, status, superseded_by,"
-                  + " policy_status, received_at, history_depth)"
-                  + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  + " policy_status, received_at, history_depth, policy_bundle_version)"
+                  + " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
               run.runId(),
               run.repository(),
               run.projectSlice(),
@@ -117,7 +117,8 @@ public final class JdbcRunRepository implements RunRepository {
               run.supersededBy(),
               run.policyStatus(),
               run.receivedAt(),
-              run.historyDepth());
+              run.historyDepth(),
+              run.policyBundleVersion());
           int ordinal = 0;
           for (EngineRecord engine : run.engines()) {
             s.update(
@@ -154,6 +155,7 @@ public final class JdbcRunRepository implements RunRepository {
         row.getString("superseded_by"),
         row.getString("policy_status"),
         Jdbc.instant(row, "received_at"),
-        row.getString("history_depth"));
+        row.getString("history_depth"),
+        row.getString("policy_bundle_version"));
   }
 }

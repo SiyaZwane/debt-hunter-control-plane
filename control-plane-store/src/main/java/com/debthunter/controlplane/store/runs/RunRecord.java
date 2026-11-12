@@ -26,6 +26,8 @@ import java.util.Objects;
  *     made), or {@code null} if not recorded. Coverage tracking measures silence against this
  * @param historyDepth how much Git history the analysis had ({@code FULL}, {@code PARTIAL} or
  *     {@code SHALLOW}), or {@code null} if not recorded
+ * @param policyBundleVersion the policy bundle version the run was assessed against, or {@code
+ *     null} for a run received before this was recorded
  */
 public record RunRecord(
     String runId,
@@ -42,7 +44,44 @@ public record RunRecord(
     String supersededBy,
     String policyStatus,
     Instant receivedAt,
-    String historyDepth) {
+    String historyDepth,
+    String policyBundleVersion) {
+
+  /** A run with every fact except the policy bundle version it was assessed against. */
+  public RunRecord(
+      String runId,
+      String repository,
+      String projectSlice,
+      String commit,
+      String toolVersion,
+      String compositeKey,
+      boolean degraded,
+      boolean scopeLimited,
+      List<EngineRecord> engines,
+      Instant committedAt,
+      RunStatus status,
+      String supersededBy,
+      String policyStatus,
+      Instant receivedAt,
+      String historyDepth) {
+    this(
+        runId,
+        repository,
+        projectSlice,
+        commit,
+        toolVersion,
+        compositeKey,
+        degraded,
+        scopeLimited,
+        engines,
+        committedAt,
+        status,
+        supersededBy,
+        policyStatus,
+        receivedAt,
+        historyDepth,
+        null);
+  }
 
   /** A run with a recorded policy outcome but no reception time or history depth. */
   public RunRecord(
@@ -142,6 +181,7 @@ public record RunRecord(
         newerRunId,
         policyStatus,
         receivedAt,
-        historyDepth);
+        historyDepth,
+        policyBundleVersion);
   }
 }

@@ -41,4 +41,12 @@ class LifecycleSinkRecordsReceptionTest {
 
     assertThat(runs.find("pr").get().receivedAt()).isNotNull();
   }
+
+  @Test
+  void aRunIsStoredWithThePolicyBundleVersionItWasAssessedAgainst() {
+    sink.accept(
+        LifecycleFixtures.bundle(RunBundleBuilder.run().id("r1").repository("acme/widgets")));
+
+    assertThat(runs.find("r1").get().policyBundleVersion()).isEqualTo("1.0");
+  }
 }
