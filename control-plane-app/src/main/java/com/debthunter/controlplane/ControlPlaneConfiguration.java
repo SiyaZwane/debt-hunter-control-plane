@@ -196,6 +196,7 @@ public class ControlPlaneConfiguration {
    * @param evidence evidence storage
    * @param suppressions the suppression register
    * @param queue the durable queue, whose old items are purged
+   * @param auditRetention removes audit entries past their retention
    * @param clock the clock
    * @param properties the control-plane configuration
    * @return the lifecycle component
@@ -205,12 +206,14 @@ public class ControlPlaneConfiguration {
       com.debthunter.controlplane.store.evidence.EvidenceStorageService evidence,
       com.debthunter.controlplane.store.suppressions.SuppressionRegisterService suppressions,
       WorkQueue queue,
+      com.debthunter.controlplane.store.audit.AuditRetention auditRetention,
       Clock clock,
       ControlPlaneProperties properties) {
     return new Housekeeping(
         evidence,
         suppressions,
         queue,
+        auditRetention,
         properties.intake().doneRetention(),
         properties.intake().deadRetention(),
         clock,

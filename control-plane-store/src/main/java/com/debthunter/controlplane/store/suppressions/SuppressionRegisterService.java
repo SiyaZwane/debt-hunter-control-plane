@@ -66,6 +66,16 @@ public final class SuppressionRegisterService implements SuppressionLookup {
   }
 
   /**
+   * Looks up a suppression by its id.
+   *
+   * @param id the suppression's id
+   * @return the suppression, if there is one
+   */
+  public Optional<Suppression> findById(String id) {
+    return suppressions.findById(id);
+  }
+
+  /**
    * Withdraws a suppression.
    *
    * @param id the suppression's id

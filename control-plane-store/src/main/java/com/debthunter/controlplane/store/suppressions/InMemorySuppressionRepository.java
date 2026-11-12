@@ -29,6 +29,11 @@ public final class InMemorySuppressionRepository implements SuppressionRepositor
   }
 
   @Override
+  public synchronized Optional<Suppression> findById(String id) {
+    return Optional.ofNullable(byId.get(id));
+  }
+
+  @Override
   public synchronized boolean delete(String id) {
     return byId.remove(id) != null;
   }

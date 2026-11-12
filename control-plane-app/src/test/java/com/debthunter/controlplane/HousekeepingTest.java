@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
 import com.debthunter.controlplane.ingest.intake.IntakeQueue;
+import com.debthunter.controlplane.store.audit.AuditEntry;
+import com.debthunter.controlplane.store.audit.AuditRetention;
+import com.debthunter.controlplane.store.audit.InMemoryAuditTrail;
 import com.debthunter.controlplane.store.evidence.EvidenceRepository;
 import com.debthunter.controlplane.store.evidence.EvidenceSnapshot;
 import com.debthunter.controlplane.store.evidence.EvidenceStorageService;
@@ -41,6 +44,8 @@ class HousekeepingTest {
   private final SuppressionRegisterService suppressions =
       new SuppressionRegisterService(new InMemorySuppressionRepository(), warnings::add);
   private final Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+  private final InMemoryAuditTrail auditTrail = new InMemoryAuditTrail();
+  private final AuditRetention audit = new AuditRetention(auditTrail, Duration.ofDays(365), clock);
   private static final Duration DONE = Duration.ofDays(1);
   private static final Duration DEAD = Duration.ofDays(7);
   private final WorkQueue queue =
@@ -73,7 +78,7 @@ class HousekeepingTest {
     evidence.store("r1", "acme/widgets", List.of(finding()), T0);
     suppressions.suppress("acme/widgets", "fp-a", "why", T0, T0.plus(Duration.ofDays(90)), 90);
 
-    new Housekeeping(evidence, suppressions, queue, DONE, DEAD, clock, Duration.ofHours(1))
+    new Housekeeping(evidence, suppressions, queue, audit, DONE, DEAD, clock, Duration.ofHours(1))
         .runOnce();
 
     assertThat(evidence.hotFor("r1")).isEmpty();
@@ -94,6 +99,7 @@ class HousekeepingTest {
             new EvidenceStorageService(broken, Duration.ofDays(30)),
             suppressions,
             queue,
+            audit,
             DONE,
             DEAD,
             clock,
@@ -116,7 +122,8 @@ class HousekeepingTest {
             });
     broken.suppress("acme/widgets", "fp-a", "why", T0, T0.plus(Duration.ofDays(90)), 90);
 
-    new Housekeeping(evidence, broken, queue, DONE, DEAD, clock, Duration.ofHours(1)).runOnce();
+    new Housekeeping(evidence, broken, queue, audit, DONE, DEAD, clock, Duration.ofHours(1))
+        .runOnce();
 
     assertThat(evidence.hotFor("r1")).isEmpty();
   }
@@ -135,6 +142,7 @@ class HousekeepingTest {
             new EvidenceStorageService(counting, Duration.ofDays(30)),
             suppressions,
             queue,
+            audit,
             DONE,
             DEAD,
             clock,
@@ -171,7 +179,7 @@ class HousekeepingTest {
     EvidenceStorageService evidence =
         new EvidenceStorageService(new InMemoryEvidenceRepository(), Duration.ofDays(30));
 
-    new Housekeeping(evidence, suppressions, queue, DONE, DEAD, later, Duration.ofHours(1))
+    new Housekeeping(evidence, suppressions, queue, audit, DONE, DEAD, later, Duration.ofHours(1))
         .runOnce();
 
     assertThat(queue.counts(IntakeQueue.KIND).done()).isZero();
@@ -186,7 +194,60 @@ class HousekeepingTest {
     suppressions.suppress("acme/widgets", "fp-a", "why", T0, T0.plus(Duration.ofDays(90)), 90);
 
     new Housekeeping(
-            evidence, suppressions, new PurgeFails(queue), DONE, DEAD, clock, Duration.ofHours(1))
+            evidence,
+            suppressions,
+            new PurgeFails(queue),
+            audit,
+            DONE,
+            DEAD,
+            clock,
+            Duration.ofHours(1))
+        .runOnce();
+
+    assertThat(evidence.hotFor("r1")).isEmpty();
+    assertThat(warnings).hasSize(1);
+  }
+
+  private static AuditEntry auditAt(Instant at) {
+    return new AuditEntry(
+        AuditEntry.Kind.ADMIN,
+        at,
+        "admin",
+        "ONBOARD_REPOSITORY",
+        "r",
+        "",
+        AuditEntry.Outcome.ALLOWED);
+  }
+
+  @Test
+  void theSweepRemovesAuditEntriesPastTheirRetentionAndNoOthers() {
+    EvidenceStorageService evidence =
+        new EvidenceStorageService(new InMemoryEvidenceRepository(), Duration.ofDays(30));
+    auditTrail.record(auditAt(NOW.minus(Duration.ofDays(366))));
+    auditTrail.record(auditAt(NOW.minus(Duration.ofDays(364))));
+    auditTrail.record(auditAt(NOW.minus(Duration.ofDays(100))));
+
+    new Housekeeping(evidence, suppressions, queue, audit, DONE, DEAD, clock, Duration.ofHours(1))
+        .runOnce();
+
+    assertThat(auditTrail.read(AuditEntry.Kind.ADMIN, Instant.EPOCH, 10)).hasSize(2);
+  }
+
+  @Test
+  void aFailureRemovingAuditEntriesDoesNotStopTheOtherTasks() {
+    EvidenceStorageService evidence =
+        new EvidenceStorageService(new InMemoryEvidenceRepository(), Duration.ofDays(30));
+    evidence.store("r1", "acme/widgets", List.of(finding()), T0);
+    suppressions.suppress("acme/widgets", "fp-a", "why", T0, T0.plus(Duration.ofDays(90)), 90);
+    AuditRetention broken =
+        new AuditRetention(
+            cutoff -> {
+              throw new IllegalStateException("audit store down");
+            },
+            Duration.ofDays(365),
+            clock);
+
+    new Housekeeping(evidence, suppressions, queue, broken, DONE, DEAD, clock, Duration.ofHours(1))
         .runOnce();
 
     assertThat(evidence.hotFor("r1")).isEmpty();

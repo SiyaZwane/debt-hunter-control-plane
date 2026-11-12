@@ -9,6 +9,7 @@ import com.debthunter.controlplane.analytics.readmodel.Staleness;
 import com.debthunter.controlplane.api.security.ControlPlaneJwtDecoders;
 import com.debthunter.controlplane.api.security.IngestionSecurityConfiguration;
 import com.debthunter.controlplane.serve.access.Roles;
+import com.debthunter.controlplane.serve.audit.AuditReadService;
 import com.debthunter.controlplane.serve.evidence.EvidenceRetrievalService;
 import com.debthunter.controlplane.serve.finding.FindingDetailService;
 import com.debthunter.controlplane.serve.finding.FindingFixture;
@@ -16,7 +17,10 @@ import com.debthunter.controlplane.serve.portfolio.PortfolioDashboardService;
 import com.debthunter.controlplane.serve.query.JdbcFindingQueryRepository;
 import com.debthunter.controlplane.serve.query.QueryService;
 import com.debthunter.controlplane.serve.squad.SquadViewService;
+import com.debthunter.controlplane.serve.suppression.SquadSuppressionService;
 import com.debthunter.controlplane.serve.web.ServeApiConfiguration;
+import com.debthunter.controlplane.store.audit.AuditTrail;
+import com.debthunter.controlplane.store.audit.JdbcAuditTrail;
 import com.debthunter.controlplane.store.evidence.EvidenceAccessLog;
 import com.debthunter.controlplane.store.evidence.EvidenceSnapshot;
 import com.debthunter.controlplane.store.evidence.JdbcEvidenceAccessLog;
@@ -38,6 +42,8 @@ import com.debthunter.controlplane.store.runs.EngineRecord;
 import com.debthunter.controlplane.store.runs.JdbcRunRepository;
 import com.debthunter.controlplane.store.runs.RunRecord;
 import com.debthunter.controlplane.store.runs.RunStatus;
+import com.debthunter.controlplane.store.suppressions.JdbcSuppressionRepository;
+import com.debthunter.controlplane.store.suppressions.SuppressionRegisterService;
 import com.debthunter.controlplane.testkit.PostgresTestDatabase;
 import com.debthunter.controlplane.testkit.TestJwtIssuer;
 import com.debthunter.domain.Category;
@@ -56,6 +62,7 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.security.test.web.reactive.server.SecurityMockServerConfigurers;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -74,6 +81,7 @@ final class ServeHarness implements AutoCloseable {
   static final String THING = "other/thing";
   static final String CONTRIBUTOR = "c".repeat(64);
   static final String PURPOSE = "investigating a regression in widgets";
+  static final int MAX_SUPPRESSION_DAYS = 90;
 
   final TestJwtIssuer issuer = new TestJwtIssuer();
   final DataSource dataSource = PostgresTestDatabase.freshSchema();
@@ -87,6 +95,8 @@ final class ServeHarness implements AutoCloseable {
   final JdbcPolicyCatalogueRepository policies;
   final JdbcEvidenceAccessLog accessLog;
   final JdbcReadModelRepository readModel;
+  final JdbcAuditTrail auditTrail;
+  final JdbcSuppressionRepository suppressionRepository;
   final InMemoryCoverageRepository coverage = new InMemoryCoverageRepository();
   final WebTestClient client;
 
@@ -98,6 +108,13 @@ final class ServeHarness implements AutoCloseable {
   }
 
   ServeHarness(Instant now, Function<EvidenceAccessLog, EvidenceAccessLog> wrapLog) {
+    this(now, wrapLog, Function.identity());
+  }
+
+  ServeHarness(
+      Instant now,
+      Function<EvidenceAccessLog, EvidenceAccessLog> wrapLog,
+      Function<AuditTrail, AuditTrail> wrapAudit) {
     StoreMigrations.migrate(dataSource);
     clock = Clock.fixed(now, ZoneOffset.UTC);
     registry = new JdbcRepositoryRegistry(dataSource);
@@ -108,6 +125,8 @@ final class ServeHarness implements AutoCloseable {
     policies = new JdbcPolicyCatalogueRepository(dataSource);
     accessLog = new JdbcEvidenceAccessLog(dataSource);
     readModel = new JdbcReadModelRepository(dataSource);
+    auditTrail = new JdbcAuditTrail(dataSource);
+    suppressionRepository = new JdbcSuppressionRepository(dataSource);
     JdbcFindingQueryRepository queries = new JdbcFindingQueryRepository(dataSource);
 
     onboard(WIDGETS, "team-a");
@@ -138,12 +157,23 @@ final class ServeHarness implements AutoCloseable {
         new EvidenceRetrievalService(
             runs, findings, evidence, policies, registry, wrapLog.apply(accessLog), clock);
 
+    SquadSuppressionService suppressionService =
+        new SquadSuppressionService(
+            registry,
+            new SuppressionRegisterService(suppressionRepository, event -> {}),
+            wrapAudit.apply(auditTrail),
+            MAX_SUPPRESSION_DAYS,
+            clock);
+    AuditReadService auditReader = new AuditReadService(auditTrail, accessLog, clock);
+
     URI jwks = issuer.startJwksServer();
     context.register(HarnessConfiguration.class);
     context.registerBean(PortfolioDashboardService.class, () -> portfolio);
     context.registerBean(SquadViewService.class, () -> squad);
     context.registerBean(QueryService.class, () -> query);
     context.registerBean(EvidenceRetrievalService.class, () -> evidenceService);
+    context.registerBean(SquadSuppressionService.class, () -> suppressionService);
+    context.registerBean(AuditReadService.class, () -> auditReader);
     context.registerBean(
         ReactiveJwtDecoder.class,
         () -> ControlPlaneJwtDecoders.create(jwks, TestJwtIssuer.ISSUER, TestJwtIssuer.AUDIENCE));
@@ -267,12 +297,33 @@ final class ServeHarness implements AutoCloseable {
     return issuer.tokenWithRolesAndSquads("ivy", List.of(Roles.EVIDENCE), List.of(squads));
   }
 
+  String auditor() {
+    return issuer.tokenWithRolesAndSquads("ada", List.of(Roles.AUDITOR), List.of());
+  }
+
   String token(List<String> roles, List<String> squads) {
     return issuer.tokenWithRolesAndSquads("multi", roles, squads);
   }
 
   WebTestClient.ResponseSpec get(String token, String path) {
     WebTestClient.RequestHeadersSpec<?> request = client.get().uri(URI.create(path));
+    if (token != null) {
+      request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+    }
+    return request.exchange();
+  }
+
+  WebTestClient.ResponseSpec post(String token, String path, Object body) {
+    WebTestClient.RequestBodySpec request =
+        client.post().uri(URI.create(path)).contentType(MediaType.APPLICATION_JSON);
+    if (token != null) {
+      request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+    }
+    return (body == null ? request : request.bodyValue(body)).exchange();
+  }
+
+  WebTestClient.ResponseSpec delete(String token, String path) {
+    WebTestClient.RequestHeadersSpec<?> request = client.delete().uri(URI.create(path));
     if (token != null) {
       request.header(HttpHeaders.AUTHORIZATION, "Bearer " + token);
     }

@@ -75,6 +75,11 @@ class CpAc83_EvidenceAccessAuditedTest {
           public List<EvidenceAccess> since(Instant from) {
             return List.of();
           }
+
+          @Override
+          public List<EvidenceAccess> since(Instant from, int limit) {
+            return List.of();
+          }
         };
     try (ServeHarness h = new ServeHarness(NOW, real -> broken)) {
       h.run(

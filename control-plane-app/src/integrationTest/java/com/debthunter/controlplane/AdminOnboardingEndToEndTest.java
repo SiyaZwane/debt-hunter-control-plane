@@ -3,12 +3,15 @@ package com.debthunter.controlplane;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
+import com.debthunter.controlplane.store.audit.AuditEntry;
+import com.debthunter.controlplane.store.audit.AuditTrail;
 import com.debthunter.controlplane.store.lifecycle.FindingState;
 import com.debthunter.controlplane.store.lifecycle.FindingStateRepository;
 import com.debthunter.controlplane.testkit.PostgresTestDatabase;
 import com.debthunter.controlplane.testkit.RunBundleBuilder;
 import com.debthunter.controlplane.testkit.TestJwtIssuer;
 import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -47,6 +50,7 @@ class AdminOnboardingEndToEndTest {
 
   @Autowired private WebTestClient client;
   @Autowired private FindingStateRepository states;
+  @Autowired private AuditTrail auditTrail;
 
   @AfterAll
   static void stopIssuer() {
@@ -109,6 +113,15 @@ class AdminOnboardingEndToEndTest {
     call(HttpMethod.POST, "/api/v1/runs", ISSUER.token(PIPELINE), bundle)
         .expectStatus()
         .isForbidden();
+
+    // Every change is in the durable trail, in the database, not only in the log.
+    assertThat(auditTrail.read(AuditEntry.Kind.ADMIN, Instant.EPOCH, 100))
+        .filteredOn(e -> e.target().contains(repository))
+        .extracting(AuditEntry::caller, AuditEntry::action)
+        .containsExactly(
+            org.assertj.core.groups.Tuple.tuple("admin-alice", "ONBOARD_REPOSITORY"),
+            org.assertj.core.groups.Tuple.tuple("admin-alice", "GRANT_WORKLOAD"),
+            org.assertj.core.groups.Tuple.tuple("admin-alice", "REVOKE_WORKLOAD"));
   }
 
   @Test

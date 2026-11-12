@@ -244,6 +244,11 @@ class EvidenceRetrievalServiceTest {
           public List<EvidenceAccess> since(Instant from) {
             return List.of();
           }
+
+          @Override
+          public List<EvidenceAccess> since(Instant from, int limit) {
+            return List.of();
+          }
         };
 
     assertThatThrownBy(() -> service(broken).retrieve(ServeFixtures.investigatorA(), "r1", PURPOSE))

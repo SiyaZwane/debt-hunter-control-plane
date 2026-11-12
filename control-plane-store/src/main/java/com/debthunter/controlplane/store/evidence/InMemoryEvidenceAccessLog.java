@@ -18,4 +18,9 @@ public final class InMemoryEvidenceAccessLog implements EvidenceAccessLog {
   public synchronized List<EvidenceAccess> since(Instant from) {
     return entries.stream().filter(e -> !e.at().isBefore(from)).toList();
   }
+
+  @Override
+  public synchronized List<EvidenceAccess> since(Instant from, int limit) {
+    return entries.stream().filter(e -> !e.at().isBefore(from)).limit(limit).toList();
+  }
 }

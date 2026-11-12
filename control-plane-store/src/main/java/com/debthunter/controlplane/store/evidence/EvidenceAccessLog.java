@@ -26,4 +26,13 @@ public interface EvidenceAccessLog {
    * @return the entries
    */
   List<EvidenceAccess> since(Instant from);
+
+  /**
+   * Reads at most a number of entries from a time on, oldest first.
+   *
+   * @param from the earliest time wanted
+   * @param limit the most entries to return
+   * @return the entries
+   */
+  List<EvidenceAccess> since(Instant from, int limit);
 }
