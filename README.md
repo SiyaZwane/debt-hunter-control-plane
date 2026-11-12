@@ -121,7 +121,8 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-10 | Rollout stage management | Done ([details](docs/rollout-stages.md)) |
 | CP-FR-11 | AI explanation with the prompt guard (rule templates now, model later) | Done ([details](docs/ai-explanation.md)) |
 | CP-FR-12 | AI remediation proposals (draft pull requests carrying a proposal document) | Done ([details](docs/ai-remediation.md)) |
-| CP-FR-13 – 16 | Work items, notifications, serve layer | Planned |
+| CP-FR-13 | Work-item lifecycle: one item per fingerprint, transactional outbox, Jira and Azure Boards adapters | Done ([details](docs/work-items.md)) |
+| CP-FR-14 – 16 | Notifications, serve layer | Planned |
 | Cross-cutting | Workload-identity scoping, retention tiering, failure isolation | Planned |
 | Release gate | Offline conformance test — the whole control plane down, pipeline still delivers | Planned |
 
@@ -451,3 +452,53 @@ step, rather than waiting for the final release-gate test.
   credentials source (a `Supplier<String>`), no configured run-link address, no worker lifecycle.
 - **Not done:** an alert on set-aside requests, closing or cleaning up a proposal branch once its pull
   request is closed, and GitHub App credentials (a token supplier is all there is).
+
+## Decisions and known gaps from CP-FR-13
+
+- **The transition log is the outbox source, not a second write.** The spec calls for a transactional
+  outbox. The lifecycle writes its log, its state and its run record to separate stores, so writing an
+  outbox row in the same transaction would mean reworking all three. Instead a feeder follows the log
+  from a saved position. The log is durable before anything depends on it (CP-BC-11), the feeder only
+  reads it, and a job that cannot be queued leaves the position where it was. The outbox itself
+  (`TransactionalOutbox`) is generic over the PostgreSQL work queue and is what the digests (CP-FR-14)
+  will use too.
+- **The worker brings the tracker into line with the finding *now*; it does not replay events.** That is
+  what makes ten runs (CP-AC-64), a replayed log, and two workers racing on one regression (CP-BC-14) all
+  harmless. A consequence: a finding resolved while its work was held (no route, tracker down) never gets
+  an item opened for it.
+- **One item per fingerprint is held by three things together:** a unique link row reserved before the
+  tracker is called, a short claim on that row so two workers cannot write for one finding, and a search
+  of the tracker for the finding's key before creating (so an item whose creation was never recorded is
+  adopted). The claim is a lease: a worker that dies holding it blocks that finding for the lease time
+  (two minutes by default), not forever.
+- **Severity threshold is a setting, default `HIGH`.** The spec says "above policy threshold" but policy
+  bundles have no work-item threshold. `WorkItemSettings` holds one value for the whole deployment; a
+  per-repository or per-policy value is not built. "Above" is read as "at least", so `HIGH` and `CRITICAL`
+  get items.
+- **No backfill when a repository reaches stage 3.** Items are made when a finding *changes* to open or
+  regressed. Findings that were already open when the repository moved up get no item until they next
+  change. Sweeping them would put a burst of tickets in a team's tracker, so it would want a cap and
+  someone choosing to do it; not built.
+- **Only creating an item is gated.** Existing items keep being closed, reopened and put on hold if the
+  repository is later moved back a stage.
+- **A suppression's end takes effect at the next run, not at the moment of expiry.** Expiry is judged by
+  commit date, so the on-hold item reopens when the first run after the end date reports the finding open
+  again.
+- **Workflow state names are configuration and must match the project.** Jira and Azure Boards projects
+  name their states differently and "on hold" is not standard in either. A move the workflow does not allow
+  is a refusal, retried and then set aside with an alert.
+- **Both adapters are exercised against imitations written from the documentation**, not against Jira or
+  Azure DevOps. The Jira search (a label in JQL) and the Azure Boards search (a tag in WIQL) are my reading
+  of the APIs.
+- **A refused credential holds work.** 401 and 403 from a tracker are treated like an outage (held, not
+  counted) so a wrong or expired token delays items instead of discarding them. It is logged at error
+  level but there is no alert for held work; a route that is missing is held with a warning.
+- **A move can double a comment in a rare case:** if the tracker accepted the move and comment but the
+  control plane died before recording it, the retry skips the move (already there) and adds the comment
+  again.
+- **Set-aside messages raise an alert through a new port** (`OperationsAlertPublisher`) whose only
+  implementation writes to a dedicated logger. There is no pager or chat channel behind it.
+- **Not wired into the application:** no beans, no tracker credentials or addresses, no worker lifecycle,
+  no configuration properties; the zone joins the application with CP-AC-93.
+- **Not done:** per-repository thresholds, a stuck-hold alert (work held for days), a way to list or
+  replay set-aside messages, and assignment of items.
