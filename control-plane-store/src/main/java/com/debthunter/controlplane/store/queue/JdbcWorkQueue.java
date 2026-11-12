@@ -210,6 +210,31 @@ public final class JdbcWorkQueue implements WorkQueue {
   }
 
   @Override
+  public boolean defer(long id, String worker, Instant notBefore) {
+    return jdbc.update(
+            "UPDATE work_queue SET status = 'PENDING', attempts = GREATEST(attempts - 1, 0),"
+                + " not_before = ?, lease_until = NULL WHERE id = ? AND status = 'IN_PROGRESS'"
+                + " AND leased_by = ?",
+            notBefore,
+            id,
+            worker)
+        == 1;
+  }
+
+  @Override
+  public int countStarted(String kind, String key, Instant finishedSince, long excludeId) {
+    return jdbc.queryOne(
+            "SELECT count(*) AS n FROM work_queue WHERE kind = ? AND queue_key = ? AND id <> ?"
+                + " AND (status = 'IN_PROGRESS' OR (status = 'DONE' AND finished_at >= ?))",
+            row -> row.getInt("n"),
+            kind,
+            key,
+            excludeId,
+            finishedSince)
+        .orElse(0);
+  }
+
+  @Override
   public boolean deadLetter(long id, String worker, String error) {
     return jdbc.update(
             "UPDATE work_queue SET status = 'DEAD', last_error = ?, finished_at = ?,"

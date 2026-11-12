@@ -110,6 +110,16 @@ class DurableRunIntakePublisherTest {
       }
 
       @Override
+      public boolean defer(long id, String w, Instant nb) {
+        return down();
+      }
+
+      @Override
+      public int countStarted(String k, String key, Instant since, long exclude) {
+        return down();
+      }
+
+      @Override
       public boolean deadLetter(long id, String w, String e) {
         return down();
       }

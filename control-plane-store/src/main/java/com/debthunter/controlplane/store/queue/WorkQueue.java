@@ -78,6 +78,32 @@ public interface WorkQueue {
   boolean hold(long id, String worker, String reason);
 
   /**
+   * Puts an item back to be tried at a chosen time, without counting the attempt. For work that is
+   * waiting its turn (for example a rate limit), not work that failed.
+   *
+   * @param id the item
+   * @param worker who holds it
+   * @param notBefore the earliest time it may be tried again
+   * @return false if the worker no longer holds it
+   */
+  boolean defer(long id, String worker, Instant notBefore);
+
+  /**
+   * Counts the items of a kind and key that have used a share of capacity lately: those finished
+   * since a time, and those in progress now. Used for per-key rate limits.
+   *
+   * <p>The count is advisory. Two workers can both see room and both proceed, so a limit built on
+   * it can be exceeded by the number of workers that check at the same instant.
+   *
+   * @param kind the kind of work
+   * @param key the ordering key (for example a repository)
+   * @param finishedSince count finished items completed at or after this
+   * @param excludeId an item not to count (the one asking), or a negative id for none
+   * @return the count
+   */
+  int countStarted(String kind, String key, Instant finishedSince, long excludeId);
+
+  /**
    * Sets an item aside as dead without further attempts, for work that can never succeed.
    *
    * @param id the item

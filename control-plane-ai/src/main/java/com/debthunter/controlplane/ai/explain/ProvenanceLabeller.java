@@ -11,6 +11,29 @@ public final class ProvenanceLabeller {
   private ProvenanceLabeller() {}
 
   /**
+   * The provenance of text written by a model.
+   *
+   * @param model the model's name and version
+   * @param promptVersion the version of the prompt it was given
+   * @param at when it was produced
+   * @return the provenance
+   */
+  public static Provenance modelProvenance(String model, String promptVersion, Instant at) {
+    return new Provenance(Provenance.Source.MODEL, model, promptVersion, at);
+  }
+
+  /**
+   * The provenance of text filled in from a template.
+   *
+   * @param templateVersion the version of the template set
+   * @param at when it was produced
+   * @return the provenance
+   */
+  public static Provenance templateProvenance(String templateVersion, Instant at) {
+    return new Provenance(Provenance.Source.RULE_TEMPLATE, "rule-templates", templateVersion, at);
+  }
+
+  /**
    * Labels text written by a model.
    *
    * @param fingerprint the finding's fingerprint

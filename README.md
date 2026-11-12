@@ -120,7 +120,7 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-09 | Policy signing and publication | Done ([details](docs/policy-publication.md)) |
 | CP-FR-10 | Rollout stage management | Done ([details](docs/rollout-stages.md)) |
 | CP-FR-11 | AI explanation with the prompt guard (rule templates now, model later) | Done ([details](docs/ai-explanation.md)) |
-| CP-FR-12 | AI remediation proposals | Planned |
+| CP-FR-12 | AI remediation proposals (draft pull requests carrying a proposal document) | Done ([details](docs/ai-remediation.md)) |
 | CP-FR-13 – 16 | Work items, notifications, serve layer | Planned |
 | Cross-cutting | Workload-identity scoping, retention tiering, failure isolation | Planned |
 | Release gate | Offline conformance test — the whole control plane down, pipeline still delivers | Planned |
@@ -406,3 +406,48 @@ step, rather than waiting for the final release-gate test.
   pipeline's path, so I left it, but it should get the same treatment.
 - **Not done:** a metric or alert on set-aside bundles (they are logged at error level), an index review
   under real volume, a polling alternative such as `LISTEN/NOTIFY`, and a Key Vault key.
+
+## Decisions and known gaps from CP-FR-12
+
+- **A proposal pull request changes no code.** The control plane holds no source and CP-AC-62 forbids
+  source in a remediation prompt, so nothing could write a real patch. The pull request is a **draft**
+  that adds one Markdown file (`.debt-hunter/proposals/<id>.md`) on a new branch (`debt-hunter/fix-<hash>`)
+  with the finding, the evidence, suggested next steps and who wrote them. A reviewer decides what to do
+  with it. Real code patches would need source and a capable model, which is a later step.
+- **No model is wired; proposals come from rule templates.** `RuleBasedRemediationAdvisor` is the only
+  advisor in use. `ModelRemediationAdvisor` is built and tested against a fake model, goes through the
+  prompt guard with the new `REMEDIATE` purpose, and is not wired. Template proposals are labelled as not
+  model-written, in the pull request text.
+- **Remediation never includes source, even for an opted-in repository.** The guard's `REMEDIATE` purpose
+  does not consult the source-sharing choice and does not fetch source (CP-AC-62). The dispatch log
+  records the purpose.
+- **Branch protection is respected by construction and by check.** `SourceHostClient` has five methods:
+  look at a branch, ask whether a branch is protected, make a branch with one file, find a pull request,
+  open a draft pull request. It has no merge, approve, update, force-push, delete or protection-change
+  operation (tested), and ArchUnit makes `FixAgentPrCreator` the only class that may write. The creator
+  asks the host whether the branch it would use is protected (a rule or a ruleset, including on a name that
+  does not exist yet) and refuses, writing nothing. A protected *base* branch is fine: a pull request is the
+  proper way in, and the base is never written to.
+- **Requests queue durably; the rate limit queues and never drops (CP-AC-61).** A request is a row on the
+  PostgreSQL work queue (a second kind, unordered), de-duplicated per repository and finding. Over a
+  repository's limit (default 3 per 24 hours, configurable) a request is put back until later without
+  spending an attempt. The count is taken from the queue itself, so it survives restarts, but it is
+  advisory: two workers checking at the same instant can overshoot by the number of workers.
+- **A source host being down is a hold, not a failure**, like the key store for intake: the request waits
+  and is never set aside because of it. A host that refuses counts attempts and is set aside after the
+  maximum. A branch the host protects, a repository that has since opted out, and a finding that has gone
+  are set aside at once, since trying again cannot help.
+- **Opt-in is a port with no store behind it yet.** `RemediationEnabledLookup` is off unless something says
+  otherwise, and an unreadable answer is never consent. Nothing sets it in the running application.
+- **Untrusted text is never written raw into a pull request.** A finding's path, message and evidence come
+  from the repository, and a model's words are not trustworthy either, while a pull request notifies
+  people. Values from the finding go in code spans (where `@name` does not notify and `#123` does not
+  link); free text is stripped of markup and has mentions and issue references neutralised.
+- **GitHub is exercised against an imitation, Azure DevOps against one written from the documentation.**
+  Neither has been run against the real service. The Azure DevOps adapter in particular is unproven: the
+  policy-configuration lookup for a branch name that does not exist yet, and the two-step branch-then-push,
+  are my reading of the API.
+- **Not wired into the application:** no beans, no endpoint to request a remediation (CP-FR-15), no
+  credentials source (a `Supplier<String>`), no configured run-link address, no worker lifecycle.
+- **Not done:** an alert on set-aside requests, closing or cleaning up a proposal branch once its pull
+  request is closed, and GitHub App credentials (a token supplier is all there is).

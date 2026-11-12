@@ -234,6 +234,69 @@ abstract class WorkQueueContract {
   }
 
   @Test
+  void aDeferredItemWaitsUntilTheChosenTimeWithoutSpendingAnAttempt() {
+    long id = add(FREE, "a", "x");
+    queue.claim(FREE, "w", 10);
+
+    assertThat(queue.defer(id, "w", clock.instant().plusSeconds(100))).isTrue();
+
+    assertThat(queue.find(id).orElseThrow().attempts()).isZero();
+    clock.advance(Duration.ofSeconds(99));
+    assertThat(queue.claim(FREE, "w", 10)).isEmpty();
+    clock.advance(Duration.ofSeconds(2));
+    assertThat(queue.claim(FREE, "w", 10)).hasSize(1);
+  }
+
+  @Test
+  void onlyTheHolderCanDeferAnItem() {
+    long id = add(FREE, "a", "x");
+    queue.claim(FREE, "w1", 10);
+
+    assertThat(queue.defer(id, "w2", clock.instant().plusSeconds(5))).isFalse();
+  }
+
+  @Test
+  void countStartedCountsRecentlyFinishedAndInProgressItemsForOneKeyOnly() {
+    long done = add(FREE, "acme/a", "1");
+    add(FREE, "acme/a", "2");
+    add(FREE, "acme/b", "3");
+    queue.claim(FREE, "w", 2);
+    queue.complete(done, "w");
+    clock.advance(Duration.ofHours(1));
+    add(FREE, "acme/a", "4");
+    queue.claim(FREE, "w", 10);
+
+    assertThat(queue.countStarted(FREE, "acme/a", clock.instant().minus(Duration.ofHours(2)), -1))
+        .as("one done, two in progress")
+        .isEqualTo(3);
+    assertThat(
+            queue.countStarted(FREE, "acme/a", clock.instant().minus(Duration.ofMinutes(30)), -1))
+        .as("the done one is outside the window")
+        .isEqualTo(2);
+    assertThat(queue.countStarted(FREE, "acme/b", clock.instant().minus(Duration.ofHours(2)), -1))
+        .isEqualTo(1);
+  }
+
+  @Test
+  void countStartedLeavesOutTheItemAsking() {
+    long id = add(FREE, "acme/a", "1");
+    queue.claim(FREE, "w", 10);
+
+    assertThat(queue.countStarted(FREE, "acme/a", clock.instant().minusSeconds(60), id)).isZero();
+  }
+
+  @Test
+  void countStartedIgnoresWaitingAndDeadItems() {
+    long dead = add(FREE, "acme/a", "1");
+    add(FREE, "acme/a", "2");
+    queue.claim(FREE, "w", 1);
+    queue.deadLetter(dead, "w", "bad");
+
+    assertThat(queue.countStarted(FREE, "acme/a", clock.instant().minus(Duration.ofDays(1)), -1))
+        .isZero();
+  }
+
+  @Test
   void aDeadLetteredItemKeepsItsPayloadForInvestigationUntilPurged() {
     long id = add(FREE, "a", "evidence");
     queue.claim(FREE, "w", 10);
