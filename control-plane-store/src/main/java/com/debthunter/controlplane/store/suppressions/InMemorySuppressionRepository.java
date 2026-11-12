@@ -34,6 +34,15 @@ public final class InMemorySuppressionRepository implements SuppressionRepositor
   }
 
   @Override
+  public synchronized List<Suppression> findExpiring(Instant from, Instant to) {
+    return byId.values().stream()
+        .filter(s -> !s.expiresAt().isBefore(from) && s.expiresAt().isBefore(to))
+        .sorted(
+            java.util.Comparator.comparing(Suppression::expiresAt).thenComparing(Suppression::id))
+        .toList();
+  }
+
+  @Override
   public synchronized List<Suppression> findUnnotified() {
     return byId.values().stream().filter(s -> s.preExpiryNotifiedAt() == null).toList();
   }

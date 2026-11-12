@@ -26,6 +26,26 @@ abstract class SuppressionRepositoryContract {
   }
 
   @Test
+  void suppressionsLapsingInAWindowAreFoundSoonestFirstAndTheEdgesAreRight() {
+    repository.save(suppression("s-late", "fp-late")); // T0 + 30 days
+    repository.save(
+        new Suppression(
+            "s-soon", "acme/widgets", "fp-soon", "r", T0, T0.plus(Duration.ofDays(5)), 90, null));
+    repository.save(
+        new Suppression(
+            "s-edge", "acme/widgets", "fp-edge", "r", T0, T0.plus(Duration.ofDays(10)), 90, null));
+
+    assertThat(repository.findExpiring(T0, T0.plus(Duration.ofDays(10))))
+        .extracting(Suppression::id)
+        .containsExactly("s-soon");
+    assertThat(repository.findExpiring(T0.plus(Duration.ofDays(5)), T0.plus(Duration.ofDays(31))))
+        .extracting(Suppression::id)
+        .containsExactly("s-soon", "s-edge", "s-late");
+    assertThat(repository.findExpiring(T0.plus(Duration.ofDays(31)), T0.plus(Duration.ofDays(40))))
+        .isEmpty();
+  }
+
+  @Test
   void aSavedSuppressionReadsBack() {
     repository.save(suppression("s1", "fp-a"));
 

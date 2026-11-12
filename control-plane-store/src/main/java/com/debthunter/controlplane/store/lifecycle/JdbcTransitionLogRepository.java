@@ -62,6 +62,14 @@ public final class JdbcTransitionLogRepository implements TransitionLogRepositor
   }
 
   @Override
+  public long latestSeq() {
+    return jdbc.queryOne(
+            "SELECT COALESCE(MAX(seq), 0) AS latest FROM transition_log",
+            row -> row.getLong("latest"))
+        .orElse(0L);
+  }
+
+  @Override
   public List<FindingTransitionEvent> historyOf(
       String repository, String projectSlice, String fingerprint) {
     return jdbc.query(

@@ -122,7 +122,8 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-11 | AI explanation with the prompt guard (rule templates now, model later) | Done ([details](docs/ai-explanation.md)) |
 | CP-FR-12 | AI remediation proposals (draft pull requests carrying a proposal document) | Done ([details](docs/ai-remediation.md)) |
 | CP-FR-13 | Work-item lifecycle: one item per fingerprint, transactional outbox, Jira and Azure Boards adapters | Done ([details](docs/work-items.md)) |
-| CP-FR-14 – 16 | Notifications, serve layer | Planned |
+| CP-FR-14 | Digest notifications: one per squad per period, Slack and Teams | Done ([details](docs/digest-notifications.md)) |
+| CP-FR-15 – 16 | Serve layer | Planned |
 | Cross-cutting | Workload-identity scoping, retention tiering, failure isolation | Planned |
 | Release gate | Offline conformance test — the whole control plane down, pipeline still delivers | Planned |
 
@@ -502,3 +503,42 @@ step, rather than waiting for the final release-gate test.
   no configuration properties; the zone joins the application with CP-AC-93.
 - **Not done:** per-repository thresholds, a stuck-hold alert (work held for days), a way to list or
   replay set-aside messages, and assignment of items.
+
+## Decisions and known gaps from CP-FR-14
+
+- **A squad is a repository owner.** The registry has an `owner` and nothing called a squad, so a digest
+  covers every repository one owner has. Several owners per squad, or a squad that spans owners, is not
+  modelled.
+- **A period's content is fixed by log position, not by time.** Event times are commit dates, so a run
+  arriving late would fall into a period already sent. Instead the first tick of a new period records the
+  newest log position, and the digest covers from the previous recorded position to that. A period missed
+  while the service was down is folded into the next digest.
+- **A digest is built once and sent as built.** The built digest is stored (`digest_ledger`) and delivery
+  reads it back, so a retry after an outage shows the original period, and a second instance or a restart
+  cannot send it twice. Two instances can still both *deliver* the same digest if one dies between posting
+  and noting it (at-least-once).
+- **First period is a baseline; nothing is sent for it.** A squad's first digest covers changes since the
+  service started, never all history. A "currently open" line in every digest gives the backlog without
+  replaying it.
+- **Empty periods send nothing** (configurable). A suppression ending soon counts as news.
+- **Findings are described by rule, path, severity and message; a finding has one path.** Coupled files and
+  similar are not retained by ingest, so "impacted files" is a count of distinct files with a new or
+  returning finding, plus each finding's path. Full detail comes from the ticket, the squad view (CP-FR-15,
+  not built) and re-running the scan.
+- **Message text is untrusted and shown.** It is cut, stripped, mention-broken, entity-escaped and put in a
+  code span. A repository's message could still contain something misleading in plain words; that cannot be
+  filtered.
+- **Destinations are a table, secrets are references.** `squad_channel` stores a reference; a
+  `WebhookSecrets` port resolves it. There is no implementation of that port, no admin endpoint to set
+  channels, and no Key Vault binding. A squad with no channel has its digest held (warning in the log, no
+  alert).
+- **Cadence is global and fixed at UTC midnight boundaries.** Per-squad cadence and time zones are not
+  built.
+- **Both adapters are exercised against an imitation webhook only.** Teams posts plain `{"text": ...}`,
+  which classic incoming webhooks accept; a Workflows-style webhook may want an Adaptive Card.
+- **Open-finding counts use the severity from the latest run that reported each finding**, from the system
+  of record (one lateral query per repository per digest).
+- **Not wired into the application**, as with CP-FR-11 to 13; it joins with CP-AC-93.
+- **Added to the store:** `TransitionLogRepository.latestSeq()` and `SuppressionRepository.findExpiring`.
+- **Not done:** per-squad cadence and time zones, an admin endpoint for channels, digests for a squad with
+  repositories under several owners, and a stuck-hold alert.

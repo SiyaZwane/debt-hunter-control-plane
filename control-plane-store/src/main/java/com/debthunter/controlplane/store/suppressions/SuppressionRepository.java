@@ -15,6 +15,15 @@ public interface SuppressionRepository {
   /** Removes a suppression by id; returns whether it existed. */
   boolean delete(String id);
 
+  /**
+   * Suppressions that lapse in a window.
+   *
+   * @param from the start, inclusive
+   * @param to the end, exclusive
+   * @return those whose expiry falls in the window, soonest first
+   */
+  List<Suppression> findExpiring(java.time.Instant from, java.time.Instant to);
+
   /** Suppressions whose owner has not yet been warned. */
   List<Suppression> findUnnotified();
 
