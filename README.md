@@ -22,7 +22,7 @@ surfaces portfolio dashboards.
 Debt Hunter's `scan` is the *data plane*: deterministic, offline-capable, and gated purely on its
 own policy evaluation. This repository is the *control plane* beside it. The control plane is
 strictly additive — everything it provides is optional, and the data plane never depends on it.
-This will be enforced by a dedicated offline conformance test that acts as a release gate.
+This is enforced by a dedicated offline conformance test that is a release gate ([how](docs/ARCHITECTURE.md#the-release-gate)).
 
 ## Relationship to the data plane
 
@@ -32,7 +32,7 @@ This is a separate repository from `debt-hunter`. The two share the canonical mo
 
 ## Modules
 
-Nine Maven modules, grouped into the zones of the control plane. Dependencies point inward toward
+Ten Maven modules, grouped into the zones of the control plane. Dependencies point inward toward
 `control-plane-store` and `domain`; nothing depends on `control-plane-api` or `control-plane-app`.
 
 | Module | Zone | Responsibility | Depends on |
@@ -47,6 +47,42 @@ Nine Maven modules, grouped into the zones of the control plane. Dependencies po
 | `control-plane-serve` | G | Read models, dashboards, query API, evidence retrieval | `domain`, `store`, `analytics` |
 | `control-plane-api` | — | REST edge: ingestion, query, squad view, portfolio | all of the above |
 | `control-plane-app` | — | Spring Boot application assembly | `api` |
+
+## Documentation
+
+| | |
+|---|---|
+| [Architecture](docs/ARCHITECTURE.md) | zones, the constraint, the rules that enforce it, the release gate |
+| [Local development](docs/LOCAL-DEV.md) | building, testing, running locally |
+| [Data governance](docs/DATA-GOVERNANCE.md) | keys, re-identification, retention |
+| [Running the application](docs/running.md) | every property and environment variable |
+| [Zones](docs/zones.md) | switching and stopping the read APIs, egress and digests |
+
+## Status
+
+- **Acceptance criteria:** all 95 (CP-AC-01 to 95) have a named test.
+- **Boundary cases:** 12 of 14 (CP-BC-01 to 14). **CP-BC-03 and CP-BC-10 are not defined in the source
+  prompt, so there is nothing to test.** They are listed in `ReleaseChecklistTest`, which fails if either
+  gains a test without being removed from the list.
+- **Release gate:** `ControlPlaneOfflineConformanceTest` runs on every `verify` of the application module
+  and cannot be skipped by a flag. No test is disabled.
+- **Not wired into the application:** governance publication, remediation and the model client.
+
+Line coverage per module (gate: 80%), from the last full `clean verify`:
+
+| Module | Lines covered |
+|---|---|
+| `control-plane-store` | 97.0% |
+| `control-plane-ingest` | 92.0% |
+| `control-plane-analytics` | 98.6% |
+| `control-plane-governance` | 97.7% |
+| `control-plane-ai` | 94.2% |
+| `control-plane-egress` | 96.3% |
+| `control-plane-serve` | 98.9% |
+| `control-plane-api` | 97.8% |
+| `control-plane-app` | 94.0% (the `main` entry point is excluded) |
+
+`control-plane-testkit` is test support and has no coverage gate.
 
 ## Building
 
@@ -127,8 +163,8 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | Cross-cutting A | Squad suppressions, durable audit trails, auditor role | Done ([details](docs/audit-and-suppressions.md)) |
 | Cross-cutting B | Persistent encrypted pseudonym directory; access, retention and export guarantees | Done ([details](docs/pseudonymisation.md)) |
 | Cross-cutting C1 | Application wiring of the serve layer, egress and digests; zone switches; failure isolation | Done ([details](docs/zones.md)) |
-| Cross-cutting C2 | Offline conformance gate; final documentation | Planned |
-| Release gate | Offline conformance test — the whole control plane down, pipeline still delivers | Planned |
+| Cross-cutting C2 | Offline conformance gate; release checklist; secrets check; final documentation | Done ([architecture](docs/ARCHITECTURE.md)) |
+| Release gate | Offline conformance test — the whole control plane down, pipeline still delivers | Done: `ControlPlaneOfflineConformanceTest`, run by `offline-conformance-gate` |
 
 CP-AC-05 — the real data-plane CLI completing a scan, with a warning and nothing worse, while the
 control plane is stopped — landed with CP-FR-01 and runs as a regression guard through every later
@@ -664,3 +700,26 @@ step, rather than waiting for the final release-gate test.
 - **The directory-access ArchUnit rule is one again**: serve is on the app classpath, so the app's test sees
   it and the copy in serve is gone (the test also asserts it can see serve, AI, egress, API and analytics).
 - **CP-AC-95 is checked through the real app** as well as the harness test CP-AC-79.
+
+## Decisions and known gaps from cross-cutting step C2 (release gate and documentation)
+
+- **The gate is its own failsafe execution** (`offline-conformance-gate`) with every skip setting fixed in
+  the pom, so `-DskipITs`, `-DskipTests`, `-Dit.test` and `-Dfailsafe.groups` do not skip it, and it fails if
+  no test ran. `-Dmaven.test.skip=true` compiles no tests and does skip it; do not release from such a build.
+- **The test was renamed** `ControlPlaneOfflineConformanceTest` and covers CP-AC-05 and CP-AC-94 in one
+  method. `CpAc05_OfflineConformanceIsAGateTest` is a thin unit test that guards it (exists, not disabled,
+  claims both ids, gate configured), so deleting or disabling it fails the build.
+- **It lives in the application module, not the test kit**, because it starts the application.
+- **Only the spec's scenario is tested**: a control plane that was started and then stopped. The harsher ones
+  (zones stopped with the application running, database down, an endpoint that accepts and never answers) are
+  not.
+- **`ReleaseChecklistTest`** fails the build on a CP-AC or CP-BC with no named test, a disabling annotation
+  anywhere (qualified or not), a missing CP-AC-17 test, or a resource file that looks like a key.
+- **`SecretsNeverLeakTest`** runs the application with recognisable keys and asserts none appears, in plain,
+  base64 or hex form, in its output, its responses or any table, and that a contributor identity is not
+  readable in the database. The configuration records print secrets as `<redacted>`.
+- **The three docs sit in `docs/`**, not `docs/control-plane/`, beside the others. LOCAL-DEV describes
+  PostgreSQL only: there is no Kafka or Redis.
+- **CP-AC-17 lives in the lifecycle tests** (`CpAc14_To_Ac20_FindingLifecycleTest` and
+  `FindingLifecycleResolverTest`), not in a file called `CpAc17_DegradedRunDoesNotResolveTest`.
+- **Key rotation has no procedure**; [data governance](docs/DATA-GOVERNANCE.md) says what each change does.

@@ -17,7 +17,7 @@
       <groupId>com.debthunter.controlplane</groupId>
       <artifactId>control-plane-api</artifactId>
     </dependency>
-    <!-- Not wired into the running application yet; the offline-distribution test uses it. -->
+    <!-- Governance (policy authoring, signing, publication) is not wired into the running application; the offline-distribution test uses it. -->
     <dependency>
       <groupId>com.debthunter.controlplane</groupId>
       <artifactId>control-plane-governance</artifactId>
@@ -129,6 +129,39 @@
             <debthunter.dataplane.jar>${project.build.directory}/data-plane/debt-hunter.jar</debthunter.dataplane.jar>
           </systemPropertyVariables>
         </configuration>
+        <executions>
+          <!-- The ordinary integration tests. The conformance test runs in its own execution below,
+               so it runs once and cannot be filtered out of this one. -->
+          <execution>
+            <id>default</id>
+            <configuration>
+              <excludes>
+                <exclude>**/ControlPlaneOfflineConformanceTest.java</exclude>
+              </excludes>
+            </configuration>
+          </execution>
+          <!-- THE RELEASE GATE (CP-AC-05, CP-AC-94). Every setting that could switch it off is
+               fixed here, and an explicit value in the pom beats -DskipITs, -DskipTests,
+               -Dit.test and -Dfailsafe.groups on the command line. It fails the build if no test
+               ran. Do not add a skip, a profile or a condition to this execution. -->
+          <execution>
+            <id>offline-conformance-gate</id>
+            <phase>integration-test</phase>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+            <configuration>
+              <skip>false</skip>
+              <skipTests>false</skipTests>
+              <skipITs>false</skipITs>
+              <groups>integration</groups>
+              <test>ControlPlaneOfflineConformanceTest</test>
+              <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+              <failIfNoTests>true</failIfNoTests>
+            </configuration>
+          </execution>
+        </executions>
       </plugin>
       <!-- The Spring Boot entry point is pure wiring (SpringApplication.run); its context start-up
            is covered by ControlPlaneApplicationSmokeTest, but its main() cannot be exercised
