@@ -125,7 +125,7 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-14 | Digest notifications: one per squad per period, Slack and Teams | Done ([details](docs/digest-notifications.md)) |
 | CP-FR-15, 16 | Serve layer: portfolio, squad view, query API, evidence retrieval | Done ([details](docs/serve-layer.md)) |
 | Cross-cutting A | Squad suppressions, durable audit trails, auditor role | Done ([details](docs/audit-and-suppressions.md)) |
-| Cross-cutting B | Persistent pseudonym directory, retention and export guarantees | Planned |
+| Cross-cutting B | Persistent encrypted pseudonym directory; access, retention and export guarantees | Done ([details](docs/pseudonymisation.md)) |
 | Cross-cutting C | Application wiring of the serve layer, egress and digests; failure isolation | Planned |
 | Release gate | Offline conformance test — the whole control plane down, pipeline still delivers | Planned |
 
@@ -207,7 +207,7 @@ step, rather than waiting for the final release-gate test.
   any of them.** See [running](docs/running.md).
 - **Repository scope is no longer configuration**: the registry decides, and an administrator manages
   it through the [administration API](docs/admin-api.md).
-- **The pseudonym key comes from configuration**, not Key Vault, and **the directory is in memory**.
+- **The pseudonym key comes from configuration**, not Key Vault. (The directory is now persistent; see cross-cutting step B.)
 - **There is no commit-graph source**, so out-of-order protection is inactive in a real deployment.
 - **Quarantine keeps metadata only**: the bundle carries raw identity and stays on the intake topic.
 - **Suppression warnings are only logged**; there is no notification channel yet.
@@ -614,4 +614,29 @@ step, rather than waiting for the final release-gate test.
   surface). CP-AC-11 and CP-AC-87 are new tests over the whole read surface.
 - **Not done here:** the pseudonym directory, an export guarantee (CP-AC-90), a named hot-to-warm test
   (CP-AC-89), and everything about wiring and failure isolation (CP-AC-92 to 95).
+
+## Decisions and known gaps from cross-cutting step B (pseudonym directory)
+
+- **The directory is persistent** (`pseudonym_directory`, migration V14). Each identity is sealed with
+  AES-256-GCM under `pseudonym.directory-key`, a key of its own: the application refuses to start if it is
+  missing, too short, or equal to the pseudonymisation or intake key. The pseudonym is part of the seal, so a
+  row moved onto another pseudonym cannot be opened. A row that cannot be opened is an error, never "unknown".
+- **First identity wins.** Re-seeing a pseudonym with a different identity string keeps the first. (The
+  in-memory directory used to overwrite; it now matches.)
+- **Never purged**, so re-identifying someone named in an old audit entry keeps working.
+- **Same database, not a separate one.** Access is confined by architecture rules instead: only
+  `IdentityPseudonymiser` and `ReIdentificationService`, and the two configuration classes that wire them, may
+  depend on the directory (checked across serve, egress, AI, analytics and the app), and no other migration may
+  mention its table. A separate database with its own credentials would be stronger and is not done.
+- **Key handling is interim.** The key comes from configuration; losing it makes every stored identity
+  unrecoverable. Key Vault is still deferred.
+- **No re-identification endpoint.** Still unexposed, as agreed; it waits for the procedure in
+  `DATA-GOVERNANCE.md`.
+- **Pseudonyms issued before this step are gone** (nothing persisted them); they re-populate as contributors
+  reappear. Backups of the database hold the directory, sealed.
+- **CP-AC-90 has no export to test.** The test pins what any export would be built from: the analytics read
+  models cannot reach the directory or a pseudonym, and none of their tables could hold a person.
+- **CP-AC-89 now has a named PostgreSQL test** of the real sweep (the behaviour already existed).
+- **A new ArchUnit rule** in ingest: any store field named for a person (contributor, author, committer,
+  email) must be a pseudonym.
 

@@ -21,6 +21,9 @@ final class AppProperties {
   /** A valid pseudonymisation key (32 bytes, base64). */
   static final String PSEUDONYM_KEY = Base64.getEncoder().encodeToString(new byte[32]);
 
+  static final String DIRECTORY_KEY =
+      Base64.getEncoder().encodeToString("directory-key-directory-key-0123".getBytes());
+
   private final List<String> args = new ArrayList<>();
 
   private AppProperties() {}
@@ -37,6 +40,7 @@ final class AppProperties {
         .with("debthunter.controlplane.database.username", db.username())
         .with("debthunter.controlplane.database.password", db.password())
         .with("debthunter.controlplane.pseudonym.key", PSEUDONYM_KEY)
+        .with("debthunter.controlplane.pseudonym.directory-key", DIRECTORY_KEY)
         .with("debthunter.controlplane.intake.encryption-key", INTAKE_KEY)
         .with("debthunter.controlplane.intake.listener-enabled", "false");
   }

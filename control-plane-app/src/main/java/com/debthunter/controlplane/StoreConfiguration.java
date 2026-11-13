@@ -10,6 +10,8 @@ import com.debthunter.controlplane.store.evidence.EvidenceStorageService;
 import com.debthunter.controlplane.store.evidence.JdbcEvidenceRepository;
 import com.debthunter.controlplane.store.findings.JdbcPseudonymisedFindingStore;
 import com.debthunter.controlplane.store.findings.PseudonymisedFindingStore;
+import com.debthunter.controlplane.store.identity.JdbcPseudonymDirectory;
+import com.debthunter.controlplane.store.identity.PseudonymDirectory;
 import com.debthunter.controlplane.store.jdbc.StoreMigrations;
 import com.debthunter.controlplane.store.lifecycle.FindingStateRepository;
 import com.debthunter.controlplane.store.lifecycle.JdbcFindingStateRepository;
@@ -19,6 +21,7 @@ import com.debthunter.controlplane.store.policy.JdbcPolicyCatalogueRepository;
 import com.debthunter.controlplane.store.policy.PolicyCatalogueService;
 import com.debthunter.controlplane.store.quarantine.JdbcQuarantineRepository;
 import com.debthunter.controlplane.store.quarantine.QuarantineRepository;
+import com.debthunter.controlplane.store.queue.AesGcmPayloadCipher;
 import com.debthunter.controlplane.store.registry.JdbcRepositoryRegistry;
 import com.debthunter.controlplane.store.registry.RepositoryRegistryService;
 import com.debthunter.controlplane.store.rollout.JdbcStageRepository;
@@ -31,6 +34,7 @@ import com.debthunter.controlplane.store.suppressions.SuppressionRegisterService
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.time.Clock;
+import java.util.Base64;
 import javax.sql.DataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -261,5 +265,40 @@ public class StoreConfiguration {
   @Bean
   public AdminAuditLog adminAuditLog(JdbcAuditTrail trail) {
     return new TrailAdminAuditLog(trail);
+  }
+
+  /**
+   * Which identity each pseudonym stands for: in the database, each identity sealed under a key of
+   * its own. Refuses to be built without a usable key, because re-identification that silently
+   * stops working, or identities stored readable, are both worse than not starting.
+   *
+   * @param dataSource the database
+   * @param properties the control-plane configuration
+   * @return the directory
+   */
+  @Bean
+  public PseudonymDirectory pseudonymDirectory(
+      DataSource dataSource, ControlPlaneProperties properties) {
+    String key = properties.pseudonym().directoryKey();
+    if (key == null || key.isBlank()) {
+      throw new IllegalStateException(
+          "The pseudonym directory key is not configured. Set debthunter.controlplane.pseudonym"
+              + ".directory-key (environment: CONTROL_PLANE_PSEUDONYM_DIRECTORY_KEY), base64-encoded,"
+              + " at least 32 bytes, and different from the other keys.");
+    }
+    if (key.strip().equals(String.valueOf(properties.pseudonym().key()).strip())
+        || key.strip().equals(String.valueOf(properties.intake().encryptionKey()).strip())) {
+      throw new IllegalStateException(
+          "debthunter.controlplane.pseudonym.directory-key must differ from the pseudonymisation"
+              + " key and the intake encryption key");
+    }
+    try {
+      return new JdbcPseudonymDirectory(
+          dataSource, new AesGcmPayloadCipher(Base64.getDecoder().decode(key.strip())));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalStateException(
+          "debthunter.controlplane.pseudonym.directory-key must be base64-encoded and at least 32"
+              + " bytes");
+    }
   }
 }

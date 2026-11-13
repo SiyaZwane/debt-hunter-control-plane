@@ -111,8 +111,11 @@ public record ControlPlaneProperties(
    *
    * @param key at least 32 bytes of key material, base64-encoded. This is the interim source; the
    *     Azure Key Vault binding replaces it
+   * @param directoryKey at least 32 bytes, base64-encoded, that seals the identities in the
+   *     pseudonym directory. It must be a key of its own, not the pseudonymisation key or the
+   *     intake key, so that one leak does not expose both
    */
-  public record Pseudonym(String key) {}
+  public record Pseudonym(String key, String directoryKey) {}
 
   /**
    * Retention and housekeeping.

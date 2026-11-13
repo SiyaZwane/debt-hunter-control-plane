@@ -20,7 +20,6 @@ import com.debthunter.controlplane.ingest.receive.RunBundleReceiver;
 import com.debthunter.controlplane.ingest.receive.StoringQuarantineSink;
 import com.debthunter.controlplane.store.evidence.EvidenceStorageService;
 import com.debthunter.controlplane.store.findings.PseudonymisedFindingStore;
-import com.debthunter.controlplane.store.identity.InMemoryPseudonymDirectory;
 import com.debthunter.controlplane.store.identity.PseudonymDirectory;
 import com.debthunter.controlplane.store.lifecycle.FindingStateRepository;
 import com.debthunter.controlplane.store.lifecycle.TransitionLogRepository;
@@ -76,18 +75,6 @@ public class IngestPipelineConfiguration {
       throw new IllegalStateException(
           "debthunter.controlplane.pseudonym.key must be base64-encoded and at least 32 bytes");
     }
-  }
-
-  /**
-   * Which identity each pseudonym stands for. <strong>In memory only</strong>: it is lost on
-   * restart, so re-identification works only for contributors seen since. A durable, encrypted,
-   * access-restricted directory replaces it.
-   *
-   * @return the directory
-   */
-  @Bean
-  public PseudonymDirectory pseudonymDirectory() {
-    return new InMemoryPseudonymDirectory();
   }
 
   /**

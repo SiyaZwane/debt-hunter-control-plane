@@ -13,7 +13,8 @@ import java.util.Optional;
 public interface PseudonymDirectory {
 
   /**
-   * Records which identity a pseudonym stands for. Idempotent.
+   * Records which identity a pseudonym stands for. Idempotent: the first identity recorded for a
+   * pseudonym is kept.
    *
    * @param pseudonym the pseudonym
    * @param identity the normalised identity it was derived from
@@ -25,6 +26,7 @@ public interface PseudonymDirectory {
    *
    * @param pseudonym the pseudonym
    * @return the identity, or empty if the pseudonym is unknown
+   * @throws PseudonymDirectoryException if it is known but the stored identity cannot be opened
    */
   Optional<String> lookup(Pseudonym pseudonym);
 }
