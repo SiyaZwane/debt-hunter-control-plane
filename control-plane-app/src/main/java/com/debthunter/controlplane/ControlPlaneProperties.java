@@ -15,6 +15,8 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param pseudonym the secret that makes contributor pseudonyms unguessable
  * @param retention how long evidence detail is kept and how often housekeeping runs
  * @param analytics how the analytics read models are kept up to date
+ * @param suppressions limits on what squads may suppress
+ * @param zones which optional parts of the control plane run in this instance
  */
 @ConfigurationProperties(prefix = "debthunter.controlplane")
 public record ControlPlaneProperties(
@@ -24,7 +26,9 @@ public record ControlPlaneProperties(
     @DefaultValue Database database,
     @DefaultValue Pseudonym pseudonym,
     @DefaultValue Retention retention,
-    @DefaultValue Analytics analytics) {
+    @DefaultValue Analytics analytics,
+    @DefaultValue Suppressions suppressions,
+    @DefaultValue Zones zones) {
 
   /**
    * Token verification. All three are required; the application refuses to start without them
@@ -189,4 +193,103 @@ public record ControlPlaneProperties(
       String token,
       String apiUrl,
       @DefaultValue("PT20S") Duration timeout) {}
+
+  /**
+   * Limits on suppressions a squad may raise through the serve API.
+   *
+   * @param maxExpiryDays the furthest ahead, in days, a suppression may expire (1 to 365)
+   */
+  public record Suppressions(@DefaultValue("90") int maxExpiryDays) {}
+
+  /**
+   * The optional zones. Ingest, the system of record and the analytics read models always run;
+   * these can each be switched off, and switching one off changes nothing about ingest.
+   *
+   * @param serve the read APIs
+   * @param egress work-item delivery to trackers
+   * @param digests the periodic squad notification
+   */
+  public record Zones(
+      @DefaultValue Serve serve, @DefaultValue Egress egress, @DefaultValue Digests digests) {}
+
+  /**
+   * The read APIs (portfolio, squad view, query, evidence, suppressions, audit).
+   *
+   * @param enabled whether this instance serves them
+   */
+  public record Serve(@DefaultValue("true") boolean enabled) {}
+
+  /**
+   * How outbound messages are delivered, shared by work-item egress and digests.
+   *
+   * @param maxAttempts failed attempts before a message is set aside
+   * @param lease how long a worker may hold a message before it is presumed lost
+   * @param initialBackoff the wait after the first failure
+   * @param maxBackoff the longest wait between attempts, and while a destination is down
+   * @param batchSize how many messages are taken at a time
+   * @param pollInterval how long a worker waits when there was nothing to do
+   */
+  public record Delivery(
+      @DefaultValue("10") int maxAttempts,
+      @DefaultValue("PT5M") Duration lease,
+      @DefaultValue("PT1S") Duration initialBackoff,
+      @DefaultValue("PT1M") Duration maxBackoff,
+      @DefaultValue("20") int batchSize,
+      @DefaultValue("PT1S") Duration pollInterval) {}
+
+  /**
+   * Work-item egress: creating and moving work items in the trackers. With no tracker configured
+   * the zone still runs and work queues until one is.
+   *
+   * @param enabled whether this instance delivers work items
+   * @param delivery how messages are delivered
+   * @param minimumSeverity the least severe finding that gets a work item
+   * @param claimTtl how long a claim on a finding's item lasts
+   * @param runLinkBase where a run can be looked at; the run id is appended. Blank for no links
+   * @param trackers the trackers this deployment talks to
+   */
+  public record Egress(
+      @DefaultValue("true") boolean enabled,
+      @DefaultValue Delivery delivery,
+      @DefaultValue("HIGH") com.debthunter.domain.Severity minimumSeverity,
+      @DefaultValue("PT2M") Duration claimTtl,
+      String runLinkBase,
+      @DefaultValue Trackers trackers) {}
+
+  /**
+   * The trackers; one that is not configured is absent.
+   *
+   * @param azureBoards Azure Boards (routes naming {@code azure-boards})
+   * @param jira Jira (routes naming {@code jira})
+   */
+  public record Trackers(Tracker azureBoards, Tracker jira) {}
+
+  /**
+   * One tracker.
+   *
+   * @param baseUrl the tracker's address; https unless it is on this machine
+   * @param authorization the full {@code Authorization} header value. A secret
+   * @param timeout how long one call may take
+   */
+  public record Tracker(
+      String baseUrl, String authorization, @DefaultValue("PT20S") Duration timeout) {}
+
+  /**
+   * The periodic digest sent to each squad's channel. Off by default: it needs somewhere to send.
+   *
+   * @param enabled whether this instance builds and sends digests
+   * @param delivery how messages are delivered
+   * @param cadence how often a digest is closed
+   * @param sendEmpty whether a period in which nothing changed still produces a digest
+   * @param squadLinkBase where a squad's findings can be looked at; the owner is appended. Required
+   *     when enabled
+   * @param webhooks secret reference to webhook address, for the references held in squad channels
+   */
+  public record Digests(
+      @DefaultValue("false") boolean enabled,
+      @DefaultValue Delivery delivery,
+      @DefaultValue("P1D") Duration cadence,
+      @DefaultValue("false") boolean sendEmpty,
+      String squadLinkBase,
+      java.util.Map<String, String> webhooks) {}
 }

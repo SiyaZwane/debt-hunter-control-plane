@@ -6,6 +6,7 @@ import com.debthunter.controlplane.store.audit.AuditRetention;
 import com.debthunter.controlplane.store.audit.JdbcAuditTrail;
 import com.debthunter.controlplane.store.baselines.BaselineRegistryService;
 import com.debthunter.controlplane.store.baselines.JdbcBaselineRegistryRepository;
+import com.debthunter.controlplane.store.evidence.EvidenceRepository;
 import com.debthunter.controlplane.store.evidence.EvidenceStorageService;
 import com.debthunter.controlplane.store.evidence.JdbcEvidenceRepository;
 import com.debthunter.controlplane.store.findings.JdbcPseudonymisedFindingStore;
@@ -23,6 +24,7 @@ import com.debthunter.controlplane.store.quarantine.JdbcQuarantineRepository;
 import com.debthunter.controlplane.store.quarantine.QuarantineRepository;
 import com.debthunter.controlplane.store.queue.AesGcmPayloadCipher;
 import com.debthunter.controlplane.store.registry.JdbcRepositoryRegistry;
+import com.debthunter.controlplane.store.registry.RepositoryRegistry;
 import com.debthunter.controlplane.store.registry.RepositoryRegistryService;
 import com.debthunter.controlplane.store.rollout.JdbcStageRepository;
 import com.debthunter.controlplane.store.rollout.StageRepository;
@@ -31,6 +33,7 @@ import com.debthunter.controlplane.store.runs.RunRepository;
 import com.debthunter.controlplane.store.suppressions.JdbcSuppressionRepository;
 import com.debthunter.controlplane.store.suppressions.SuppressionEventPublisher;
 import com.debthunter.controlplane.store.suppressions.SuppressionRegisterService;
+import com.debthunter.controlplane.store.suppressions.SuppressionRepository;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.time.Clock;
@@ -91,12 +94,45 @@ public class StoreConfiguration {
    * so which workload may publish for which repository is decided by what has been onboarded and
    * granted.
    *
-   * @param dataSource the database
+   * @param registry the registry's storage
    * @return the registry service
    */
   @Bean
-  public RepositoryRegistryService repositoryRegistryService(DataSource dataSource) {
-    return new RepositoryRegistryService(new JdbcRepositoryRegistry(dataSource));
+  public RepositoryRegistryService repositoryRegistryService(RepositoryRegistry registry) {
+    return new RepositoryRegistryService(registry);
+  }
+
+  /**
+   * The registry's storage, shared by the registry service and the read and egress zones.
+   *
+   * @param dataSource the database
+   * @return the registry
+   */
+  @Bean
+  public RepositoryRegistry repositoryRegistry(DataSource dataSource) {
+    return new JdbcRepositoryRegistry(dataSource);
+  }
+
+  /**
+   * The suppression register's storage, shared by the register and the egress and digest zones.
+   *
+   * @param dataSource the database
+   * @return the repository
+   */
+  @Bean
+  public SuppressionRepository suppressionRepository(DataSource dataSource) {
+    return new JdbcSuppressionRepository(dataSource);
+  }
+
+  /**
+   * Evidence storage, shared by evidence storage and retrieval.
+   *
+   * @param dataSource the database
+   * @return the repository
+   */
+  @Bean
+  public EvidenceRepository evidenceRepository(DataSource dataSource) {
+    return new JdbcEvidenceRepository(dataSource);
   }
 
   /**
@@ -172,14 +208,14 @@ public class StoreConfiguration {
   /**
    * The suppression register. It is also the {@code SuppressionLookup} the lifecycle reads.
    *
-   * @param dataSource the database
+   * @param repository the register's storage
    * @param events where warnings go
    * @return the register
    */
   @Bean
   public SuppressionRegisterService suppressionRegisterService(
-      DataSource dataSource, SuppressionEventPublisher events) {
-    return new SuppressionRegisterService(new JdbcSuppressionRepository(dataSource), events);
+      SuppressionRepository repository, SuppressionEventPublisher events) {
+    return new SuppressionRegisterService(repository, events);
   }
 
   /**
@@ -218,15 +254,14 @@ public class StoreConfiguration {
   /**
    * Evidence storage with its configured hot-tier lifetime.
    *
-   * @param dataSource the database
+   * @param repository evidence storage
    * @param properties the control-plane configuration
    * @return the service
    */
   @Bean
   public EvidenceStorageService evidenceStorageService(
-      DataSource dataSource, ControlPlaneProperties properties) {
-    return new EvidenceStorageService(
-        new JdbcEvidenceRepository(dataSource), properties.retention().evidenceHotTtl());
+      EvidenceRepository repository, ControlPlaneProperties properties) {
+    return new EvidenceStorageService(repository, properties.retention().evidenceHotTtl());
   }
 
   /**

@@ -24,3 +24,30 @@ debthunter:
     pseudonym:
       key: ${CONTROL_PLANE_PSEUDONYM_KEY:}
       directory-key: ${CONTROL_PLANE_PSEUDONYM_DIRECTORY_KEY:}
+    # Limits on what a squad may suppress through the read API.
+    suppressions:
+      max-expiry-days: ${CONTROL_PLANE_SUPPRESSION_MAX_EXPIRY_DAYS:90}
+    # Optional zones. Ingest, the system of record and the analytics read models always run; each of
+    # these can be switched off without changing anything about ingest. A zone that is switched off
+    # needs none of its own configuration.
+    zones:
+      # The read APIs: portfolio, squad view, query, evidence, squad suppressions, audit.
+      serve:
+        enabled: true
+      # Work-item egress. With no tracker configured it still runs, and work queues until one is.
+      egress:
+        enabled: true
+        minimum-severity: HIGH
+        # Where a run can be looked at; the run id is appended. Blank for no links.
+        run-link-base: ${CONTROL_PLANE_RUN_LINK_BASE:}
+        # A tracker that is configured needs both values. The authorization is the full header
+        # value, for example "Basic <base64>", and is a secret.
+        #   trackers:
+        #     azure-boards: { base-url: https://dev.azure.com/acme, authorization: "Basic ..." }
+        #     jira:         { base-url: https://acme.atlassian.net, authorization: "Basic ..." }
+      # The periodic squad digest. Off by default: it needs somewhere to send.
+      digests:
+        enabled: false
+        # Required when enabled: where a squad's findings can be looked at; the owner is appended.
+        squad-link-base: ${CONTROL_PLANE_SQUAD_LINK_BASE:}
+        #   webhooks: { <secret-ref held in the squad's channel>: https://hooks.example/... }

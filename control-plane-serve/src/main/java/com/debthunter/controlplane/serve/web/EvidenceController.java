@@ -3,6 +3,7 @@ package com.debthunter.controlplane.serve.web;
 import com.debthunter.controlplane.serve.evidence.EvidenceRetrievalService;
 import java.security.Principal;
 import java.util.Objects;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,6 +14,7 @@ import reactor.core.publisher.Mono;
 
 /** Retrieval of a run's evidence for an investigation. */
 @RestController
+@Conditional(ServeZoneCondition.class)
 @RequestMapping(EvidenceController.PATH)
 public class EvidenceController {
 

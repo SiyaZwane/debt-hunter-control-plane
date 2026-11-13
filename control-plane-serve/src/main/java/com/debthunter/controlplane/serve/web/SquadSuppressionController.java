@@ -4,6 +4,7 @@ import com.debthunter.controlplane.serve.suppression.SquadSuppressionService;
 import com.debthunter.controlplane.serve.suppression.SuppressRequest;
 import java.security.Principal;
 import java.util.Objects;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +18,7 @@ import reactor.core.publisher.Mono;
 
 /** A squad setting aside findings in its own repositories, and withdrawing that. */
 @RestController
+@Conditional(ServeZoneCondition.class)
 @RequestMapping(SquadViewController.BASE)
 public class SquadSuppressionController {
 

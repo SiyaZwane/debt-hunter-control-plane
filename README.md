@@ -126,7 +126,8 @@ enforcer rules, and JaCoCo's 80% line-coverage gate across every module.
 | CP-FR-15, 16 | Serve layer: portfolio, squad view, query API, evidence retrieval | Done ([details](docs/serve-layer.md)) |
 | Cross-cutting A | Squad suppressions, durable audit trails, auditor role | Done ([details](docs/audit-and-suppressions.md)) |
 | Cross-cutting B | Persistent encrypted pseudonym directory; access, retention and export guarantees | Done ([details](docs/pseudonymisation.md)) |
-| Cross-cutting C | Application wiring of the serve layer, egress and digests; failure isolation | Planned |
+| Cross-cutting C1 | Application wiring of the serve layer, egress and digests; zone switches; failure isolation | Done ([details](docs/zones.md)) |
+| Cross-cutting C2 | Offline conformance gate; final documentation | Planned |
 | Release gate | Offline conformance test — the whole control plane down, pipeline still delivers | Planned |
 
 CP-AC-05 — the real data-plane CLI completing a scan, with a warning and nothing worse, while the
@@ -640,3 +641,26 @@ step, rather than waiting for the final release-gate test.
 - **A new ArchUnit rule** in ingest: any store field named for a person (contributor, author, committer,
   email) must be a pseudonym.
 
+## Decisions and known gaps from cross-cutting step C1 (wiring and zones)
+
+- **Serve, egress and digests are zones** with a switch each, and can be stopped and started without a
+  restart ([zones](docs/zones.md)). Defaults: serve on, egress on, digests off (it needs somewhere to send).
+- **Egress is on by default with no tracker configured.** It runs and work queues until one is, rather than
+  refusing to start. A tracker that is half configured, or not https, does refuse.
+- **Digests refuse to start without `squad-link-base`**; webhooks are resolved from a configured map of secret
+  reference to address. That is interim, like the other keys; Key Vault is still deferred.
+- **The component-scan trap was solved with a condition, not a move.** The serve controllers and
+  configuration sit under the application's scan root, so each carries `ServeZoneCondition` (reads the switch
+  from the environment, true by default); an ArchUnit rule requires it on every controller.
+- **The suppression cap is configuration** (`suppressions.max-expiry-days`, default 90, 1 to 365), not part
+  of the policy bundle.
+- **Work-item states, minimum severity and claim time:** severity and claim time are configurable; the three
+  tracker state names are the defaults (`Active`, `On Hold`, `Closed` for Azure Boards).
+- **Queue kinds are always registered**, so a zone that is off still has its messages accepted and kept.
+- **Findings are explained from templates only**; the model is not wired.
+- **Still not wired:** governance publication, remediation and the model client.
+- **A copy of the egress module's fake Azure DevOps server** lives in the app's integration tests, because
+  the egress test classes are not visible from the app.
+- **The directory-access ArchUnit rule is one again**: serve is on the app classpath, so the app's test sees
+  it and the copy in serve is gone (the test also asserts it can see serve, AI, egress, API and analytics).
+- **CP-AC-95 is checked through the real app** as well as the harness test CP-AC-79.

@@ -9,6 +9,7 @@ import java.security.Principal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,6 +20,7 @@ import reactor.core.publisher.Mono;
 
 /** A squad's own view of its repositories and findings. */
 @RestController
+@Conditional(ServeZoneCondition.class)
 @RequestMapping(SquadViewController.BASE)
 public class SquadViewController {
 

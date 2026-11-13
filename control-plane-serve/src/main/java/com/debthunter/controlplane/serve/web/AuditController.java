@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.Locale;
 import java.util.Objects;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -17,6 +18,7 @@ import reactor.core.publisher.Mono;
 
 /** Read access to the audit trails, for auditors only. */
 @RestController
+@Conditional(ServeZoneCondition.class)
 @RequestMapping(AuditController.PATH)
 public class AuditController {
 

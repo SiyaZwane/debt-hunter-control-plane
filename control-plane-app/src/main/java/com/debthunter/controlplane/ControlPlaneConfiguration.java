@@ -7,7 +7,9 @@ import com.debthunter.controlplane.api.ingestion.SlidingWindowRequestRateLimiter
 import com.debthunter.controlplane.api.security.AdminAccess;
 import com.debthunter.controlplane.api.security.ControlPlaneJwtDecoders;
 import com.debthunter.controlplane.api.security.IngestionSecurityConfiguration;
+import com.debthunter.controlplane.egress.alert.LoggingOperationsAlertPublisher;
 import com.debthunter.controlplane.egress.alert.LoggingSecurityAlertPublisher;
+import com.debthunter.controlplane.egress.alert.OperationsAlertPublisher;
 import com.debthunter.controlplane.egress.alert.SecurityAlertPublisher;
 import com.debthunter.controlplane.ingest.intake.DurableRunIntakePublisher;
 import com.debthunter.controlplane.ingest.intake.IntakeEnvelopeCodec;
@@ -16,10 +18,13 @@ import com.debthunter.controlplane.ingest.intake.RunIntakeQueuePublisher;
 import com.debthunter.controlplane.store.queue.AesGcmPayloadCipher;
 import com.debthunter.controlplane.store.queue.JdbcWorkQueue;
 import com.debthunter.controlplane.store.queue.PayloadCipher;
+import com.debthunter.controlplane.store.queue.QueuePolicy;
 import com.debthunter.controlplane.store.queue.WorkQueue;
 import java.net.URI;
 import java.time.Clock;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
 import javax.sql.DataSource;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -40,7 +45,10 @@ import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
   IngestionApiConfiguration.class,
   IngestionSecurityConfiguration.class,
   StoreConfiguration.class,
-  IngestPipelineConfiguration.class
+  IngestPipelineConfiguration.class,
+  ServeConfiguration.class,
+  EgressConfiguration.class,
+  DigestConfiguration.class
 })
 public class ControlPlaneConfiguration {
 
@@ -124,11 +132,15 @@ public class ControlPlaneConfiguration {
   public WorkQueue workQueue(
       DataSource dataSource, ControlPlaneProperties properties, Clock clock) {
     ControlPlaneProperties.Intake intake = properties.intake();
-    return new JdbcWorkQueue(
-        dataSource,
+    // Every kind the queue can hold is registered whether or not its zone is enabled, so a zone
+    // that is switched off still has its messages accepted and kept.
+    Map<String, QueuePolicy> policies = new HashMap<>();
+    policies.putAll(
         IntakeQueue.policies(
-            intake.maxAttempts(), intake.lease(), intake.initialBackoff(), intake.maxBackoff()),
-        clock);
+            intake.maxAttempts(), intake.lease(), intake.initialBackoff(), intake.maxBackoff()));
+    policies.putAll(EgressConfiguration.queuePolicies(properties.zones().egress().delivery()));
+    policies.putAll(DigestConfiguration.queuePolicies(properties.zones().digests().delivery()));
+    return new JdbcWorkQueue(dataSource, policies, clock);
   }
 
   /**
@@ -151,6 +163,16 @@ public class ControlPlaneConfiguration {
   @Bean
   public SecurityAlertPublisher securityAlertPublisher() {
     return new LoggingSecurityAlertPublisher();
+  }
+
+  /**
+   * Where operational alerts (a message set aside, for instance) go.
+   *
+   * @return a publisher that logs alerts
+   */
+  @Bean
+  public OperationsAlertPublisher operationsAlertPublisher() {
+    return new LoggingOperationsAlertPublisher();
   }
 
   /**
