@@ -22,6 +22,10 @@
       <groupId>com.debthunter.controlplane</groupId>
       <artifactId>control-plane-governance</artifactId>
     </dependency>
+    <dependency>
+      <groupId>com.debthunter.controlplane</groupId>
+      <artifactId>control-plane-serve</artifactId>
+    </dependency>
     <!-- The only module permitted to put Spring Boot on its production classpath. -->
     <dependency>
       <groupId>org.springframework.boot</groupId>

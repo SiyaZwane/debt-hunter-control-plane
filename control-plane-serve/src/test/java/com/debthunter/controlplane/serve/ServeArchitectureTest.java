@@ -84,6 +84,18 @@ class ServeArchitectureTest {
               "com.debthunter.controlplane.api..",
               "com.debthunter.controlplane.app..");
 
+  /**
+   * The controllers are under the application's component-scan root, so without the zone condition
+   * a deployment that switched the zone off would still build them and fail for want of services.
+   */
+  @ArchTest
+  static final ArchRule everyControllerFollowsTheServeZoneSwitch =
+      com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes()
+          .that()
+          .areAnnotatedWith(org.springframework.web.bind.annotation.RestController.class)
+          .should()
+          .beAnnotatedWith(org.springframework.context.annotation.Conditional.class);
+
   @SuppressWarnings("unused")
   private static boolean unused(JavaClass c) {
     return c != null;

@@ -75,8 +75,9 @@ return `policy.known: false` rather than a guess. The outcome is the status only
 None of the response types has a field for a contributor, even as a pseudonym, and the finding rows are read
 without the contributors column. Tests check this by reflection and over the JSON each endpoint returns.
 
-## Not wired into the application
+## In the application
 
-No beans, no configuration, no worker. `ServeApiConfiguration` wires the controllers over services the
-application would supply, and the integration tests assemble that in a real Spring context with the real
-security chain. Nothing sets the `squads` claim: it has to come from the identity provider.
+Wired by `ServeConfiguration` in `control-plane-app`, on by default and switched off with
+`zones.serve.enabled=false` ([zones](zones.md)). Findings are explained from templates only: no model is
+configured, so no endpoint can reach one. The suppression expiry cap is `suppressions.max-expiry-days`.
+Nothing sets the `squads` claim: it has to come from the identity provider.

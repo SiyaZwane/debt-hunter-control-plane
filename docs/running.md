@@ -35,6 +35,9 @@ HTTP POST /api/v1/runs ──► security ──► rate limit ──► parse �
 
 The schema is migrated (Flyway) before anything else uses the database.
 
+- **The read APIs, work-item egress and digests are zones** that can each be switched off without
+  affecting ingest ([details](zones.md)). Serve and egress are on by default; digests are off.
+
 ## Configuration
 
 | Property | Environment | Default |
@@ -52,6 +55,14 @@ The schema is migrated (Flyway) before anything else uses the database.
 | `rate-limit.max-requests` / `.window` | | `600` / `PT1M` |
 | `retention.evidence-hot-ttl` | | `P30D` |
 | `retention.sweep-interval` | | `PT1H` |
+| `suppressions.max-expiry-days` | `CONTROL_PLANE_SUPPRESSION_MAX_EXPIRY_DAYS` | `90` (1 to 365) |
+| `zones.serve.enabled` | | `true` |
+| `zones.egress.enabled` | | `true` |
+| `zones.egress.trackers.azure-boards.*` / `.jira.*` | | none: `base-url`, `authorization` (both or neither) |
+| `zones.egress.minimum-severity` / `.claim-ttl` / `.run-link-base` | `CONTROL_PLANE_RUN_LINK_BASE` | `HIGH` / `PT2M` / none |
+| `zones.digests.enabled` | | `false` |
+| `zones.digests.squad-link-base` / `.cadence` / `.send-empty` / `.webhooks.<ref>` | `CONTROL_PLANE_SQUAD_LINK_BASE` | required when enabled / `P1D` / `false` / none |
+| `zones.*.delivery.*` | | 10 attempts, `PT5M` lease, `PT1S` to `PT1M` backoff, batch 20, poll `PT1S` |
 
 All keys are under `debthunter.controlplane.`.
 

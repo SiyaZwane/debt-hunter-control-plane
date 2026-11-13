@@ -3,6 +3,7 @@ package com.debthunter.controlplane.serve.web;
 import com.debthunter.controlplane.serve.query.QueryService;
 import java.security.Principal;
 import java.util.Objects;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -12,6 +13,7 @@ import reactor.core.publisher.Mono;
 
 /** The programmatic read of findings. */
 @RestController
+@Conditional(ServeZoneCondition.class)
 @RequestMapping(QueryApiController.PATH)
 public class QueryApiController {
 

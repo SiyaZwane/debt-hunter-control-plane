@@ -9,6 +9,7 @@ import com.debthunter.controlplane.serve.suppression.SquadSuppressionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.codec.ServerCodecConfigurer;
 import org.springframework.http.codec.json.Jackson2JsonDecoder;
@@ -21,6 +22,7 @@ import org.springframework.web.reactive.config.WebFluxConfigurer;
  * access rules, so a controller added here cannot widen access.
  */
 @Configuration(proxyBeanMethods = false)
+@Conditional(ServeZoneCondition.class)
 public class ServeApiConfiguration implements WebFluxConfigurer {
 
   /**

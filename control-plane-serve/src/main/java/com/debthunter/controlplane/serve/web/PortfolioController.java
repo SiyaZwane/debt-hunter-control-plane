@@ -3,6 +3,7 @@ package com.debthunter.controlplane.serve.web;
 import com.debthunter.controlplane.serve.portfolio.PortfolioDashboardService;
 import java.security.Principal;
 import java.util.Objects;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -11,6 +12,7 @@ import reactor.core.publisher.Mono;
 
 /** The estate by team, for leaders. */
 @RestController
+@Conditional(ServeZoneCondition.class)
 @RequestMapping(PortfolioController.PATH)
 public class PortfolioController {
 

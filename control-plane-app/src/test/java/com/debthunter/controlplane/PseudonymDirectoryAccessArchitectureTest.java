@@ -25,9 +25,8 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
  * a closed list: the pseudonymiser writes it, the audited re-identification service reads it, and
  * the two configuration classes that build them hand it over. Nothing else in the whole estate (the
  * serve layer, egress, analytics, the AI module) may depend on it, and no migration may reference
- * its table, so no view, copy or export can be built from it by accident. This test sees the
- * application and everything it runs; the serve layer and the AI module, which it does not yet run,
- * are covered by the same rule in {@code control-plane-serve}.
+ * its table, so no view, copy or export can be built from it by accident. The application runs
+ * every module, so this one test sees them all.
  */
 class PseudonymDirectoryAccessArchitectureTest {
 
@@ -39,6 +38,21 @@ class PseudonymDirectoryAccessArchitectureTest {
         new ClassFileImporter()
             .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
             .importPackages("com.debthunter.controlplane");
+  }
+
+  @Test
+  void theRuleCanSeeTheModulesItIsAboutOrItWouldProveNothing() {
+    assertThat(production.contain(com.debthunter.controlplane.serve.audit.AuditReadService.class))
+        .isTrue();
+    assertThat(production.contain(com.debthunter.controlplane.ai.guard.PromptGuard.class)).isTrue();
+    assertThat(production.contain(com.debthunter.controlplane.egress.alert.SecurityAlertType.class))
+        .isTrue();
+    assertThat(production.contain(com.debthunter.controlplane.api.admin.AdminController.class))
+        .isTrue();
+    assertThat(
+            production.contain(
+                com.debthunter.controlplane.analytics.readmodel.ReadModelRepository.class))
+        .isTrue();
   }
 
   @Test
