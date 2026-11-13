@@ -16,7 +16,15 @@ import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.context.ConfigurableApplicationContext;
 
 /**
- * CP-AC-05 — the most important test in the control plane.
+ * CP-AC-05 and CP-AC-94 — the most important test in the control plane, and a release gate.
+ *
+ * <p>The architectural guarantee as code: the control plane being offline changes nothing about
+ * what a pipeline delivers. The build runs this test in its own failsafe execution ({@code
+ * offline-conformance-gate} in this module's pom) that no skip flag or test filter can switch off,
+ * and fails if it did not run. It is never disabled, and a test in {@code src/test} checks that.
+ *
+ * <p>It lives in the application module rather than in the test kit, because it starts the
+ * application and the test kit sits below it.
  *
  * <p>The control plane is started, so its port is real and was serving, and then stopped. A real
  * data-plane scan is then run with publication pointed at that dead endpoint. The pipeline must
@@ -25,14 +33,15 @@ import org.springframework.context.ConfigurableApplicationContext;
  * control plane being gone may change what the pipeline delivers.
  */
 @Tag("integration")
-class CpAc05_OfflinePipelineCompletesTest {
+class ControlPlaneOfflineConformanceTest {
 
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
   @TempDir Path temp;
 
   @Test
-  void cpAc05_aPipelineCompletesNormallyWhenTheControlPlaneHasBeenStopped() throws Exception {
+  void cpAc05_cpAc94_aPipelineCompletesNormallyWhenTheControlPlaneHasBeenStopped()
+      throws Exception {
     Path repository = DataPlaneRunner.createRepository(temp.resolve("repo"));
     int stoppedPort = startThenStopControlPlane();
     Path output = temp.resolve("out");

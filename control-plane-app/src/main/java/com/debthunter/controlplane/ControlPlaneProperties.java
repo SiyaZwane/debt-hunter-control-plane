@@ -30,6 +30,9 @@ public record ControlPlaneProperties(
     @DefaultValue Suppressions suppressions,
     @DefaultValue Zones zones) {
 
+  /** What a secret is shown as when its holder is printed. */
+  private static final String REDACTED = "<redacted>";
+
   /**
    * Token verification. All three are required; the application refuses to start without them
    * rather than run unauthenticated.
@@ -80,7 +83,13 @@ public record ControlPlaneProperties(
       @DefaultValue("20") int batchSize,
       @DefaultValue("PT0.5S") Duration pollInterval,
       @DefaultValue("P1D") Duration doneRetention,
-      @DefaultValue("P7D") Duration deadRetention) {}
+      @DefaultValue("P7D") Duration deadRetention) {
+
+    @Override
+    public String toString() {
+      return "Intake[listenerEnabled=" + listenerEnabled + ", encryptionKey=" + REDACTED + "]";
+    }
+  }
 
   /**
    * The per-pipeline publish rate limit.
@@ -108,7 +117,13 @@ public record ControlPlaneProperties(
       String password,
       @DefaultValue("10") int maxPoolSize,
       @DefaultValue("PT3S") Duration connectionTimeout,
-      @DefaultValue("PT30S") Duration socketTimeout) {}
+      @DefaultValue("PT30S") Duration socketTimeout) {
+
+    @Override
+    public String toString() {
+      return "Database[url=" + url + ", username=" + username + ", password=" + REDACTED + "]";
+    }
+  }
 
   /**
    * The pseudonymisation key. Required: nothing is processed without it.
@@ -119,7 +134,13 @@ public record ControlPlaneProperties(
    *     pseudonym directory. It must be a key of its own, not the pseudonymisation key or the
    *     intake key, so that one leak does not expose both
    */
-  public record Pseudonym(String key, String directoryKey) {}
+  public record Pseudonym(String key, String directoryKey) {
+
+    @Override
+    public String toString() {
+      return "Pseudonym[key=" + REDACTED + ", directoryKey=" + REDACTED + "]";
+    }
+  }
 
   /**
    * Retention and housekeeping.
@@ -192,7 +213,19 @@ public record ControlPlaneProperties(
       String organization,
       String token,
       String apiUrl,
-      @DefaultValue("PT20S") Duration timeout) {}
+      @DefaultValue("PT20S") Duration timeout) {
+
+    @Override
+    public String toString() {
+      return "Estate[provider="
+          + provider
+          + ", organization="
+          + organization
+          + ", token="
+          + REDACTED
+          + "]";
+    }
+  }
 
   /**
    * Limits on suppressions a squad may raise through the serve API.
@@ -272,7 +305,13 @@ public record ControlPlaneProperties(
    * @param timeout how long one call may take
    */
   public record Tracker(
-      String baseUrl, String authorization, @DefaultValue("PT20S") Duration timeout) {}
+      String baseUrl, String authorization, @DefaultValue("PT20S") Duration timeout) {
+
+    @Override
+    public String toString() {
+      return "Tracker[baseUrl=" + baseUrl + ", authorization=" + REDACTED + "]";
+    }
+  }
 
   /**
    * The periodic digest sent to each squad's channel. Off by default: it needs somewhere to send.
@@ -291,5 +330,17 @@ public record ControlPlaneProperties(
       @DefaultValue("P1D") Duration cadence,
       @DefaultValue("false") boolean sendEmpty,
       String squadLinkBase,
-      java.util.Map<String, String> webhooks) {}
+      java.util.Map<String, String> webhooks) {
+
+    @Override
+    public String toString() {
+      return "Digests[enabled="
+          + enabled
+          + ", squadLinkBase="
+          + squadLinkBase
+          + ", webhooks="
+          + (webhooks == null ? "none" : webhooks.keySet() + " (addresses redacted)")
+          + "]";
+    }
+  }
 }
